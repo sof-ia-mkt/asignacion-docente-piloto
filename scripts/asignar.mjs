@@ -25,12 +25,14 @@ const db = new pg.Client({ connectionString: env.SUPABASE_DB_URL, connectionTime
 await db.connect();
 
 const toMin = (h) => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + b; };
+// "JACOBO UGALDE TYRON DALED" -> "Jacobo Ugalde Tyron Daled" (respeta acentos).
+const nombreCorto = (n) => (n ?? "").toLowerCase().replace(/(^|\s)(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
 const overlap = (a, b) =>
   a.dia && b.dia && a.dia === b.dia && a.ini != null && b.ini != null && a.ini < b.fin && b.ini < a.fin;
 
 // ---- candidatos fuertes por materia (combina historial + cv-alta del mismo profe) ----
 const cand = (await db.query(
-  `select mc.materia_id, mc.profesor_id, sum(mc.puntaje)::int puntaje,
+  `select mc.materia_id, mc.profesor_id, max(p.nombre) nombre, sum(mc.puntaje)::int puntaje,
           string_agg(mc.razon, ' | ' order by mc.puntaje desc) razon
      from materia_candidatos mc
      join profesores p on p.id = mc.profesor_id
@@ -116,7 +118,7 @@ for (const s of slots) {
     asignados.push({ slot: s, profesor_id: null });
     alertas.push({
       tipo: "sin_candidato", severidad: "alta", slot_id: s.id, slot_id_2: null, profesor_id: null,
-      detalle: `Sin candidato fuerte para "${s.materia}" (${s.grupo ?? "s/grupo"}).`,
+      detalle: `Nadie en el sistema puede dar "${s.materia}" (${s.grupo ?? "sin grupo"}). Hay que buscar o contratar a un docente para esta clase.`,
     });
     continue;
   }
@@ -137,7 +139,7 @@ for (const s of slots) {
     asignados.push({ slot: s, profesor_id: null });
     alertas.push({
       tipo: "choque_horario", severidad: "alta", slot_id: s.id, slot_id_2: sc.id, profesor_id: top.profesor_id,
-      detalle: `"${s.materia}" (${s.grupo}) ${s.dia} ${s.hora_inicio}-${s.hora_fin} sin docente: el candidato fuerte ya da "${sc.materia}" (${sc.grupo}) a esa hora.`,
+      detalle: `"${s.materia}" (${s.grupo}), ${s.dia} ${s.hora_inicio}-${s.hora_fin}: quedó sin maestro. El mejor candidato (${nombreCorto(top.nombre)}) ya da "${sc.materia}" a esa misma hora, así que no puede tomar las dos. Elige otro docente disponible o cambia el horario de una de las clases.`,
     });
     continue;
   }
@@ -169,7 +171,7 @@ for (const [pid, n] of carga) {
   if (n > SOBRECARGA_SLOTS) alertas.push({
     tipo: "sobrecarga", severidad: n > SOBRECARGA_SLOTS * 1.5 ? "alta" : "media",
     slot_id: null, slot_id_2: null, profesor_id: pid,
-    detalle: `Asignado a ${n} slots en septiembre (umbral ${SOBRECARGA_SLOTS}).`,
+    detalle: `Tiene ${n} clases asignadas en septiembre; lo recomendable es máximo ${SOBRECARGA_SLOTS}. Puede estar sobrecargado: considera pasar algunas a otro docente.`,
   });
 }
 
@@ -185,7 +187,7 @@ for (const a of [...asignados, ...manualAsignados]) {
 for (const v of porProfMat.values()) {
   if (v.grupos.size >= REPETIDO_GRUPOS) alertas.push({
     tipo: "docente_repetido", severidad: "media", slot_id: v.slot, slot_id_2: null, profesor_id: v.prof,
-    detalle: `Mismo docente cubre "${v.materia}" en ${v.grupos.size} grupos (posible sobre-concentración).`,
+    detalle: `Da "${v.materia}" en ${v.grupos.size} grupos distintos. Está muy concentrado en una sola materia; conviene repartir algunos grupos con otro docente.`,
   });
 }
 
@@ -213,8 +215,8 @@ for (const [k, clases] of porProfDia) {
     tipo: "traslado_plantel", severidad: imposible ? "alta" : "media",
     slot_id: clases[clases.length - 1].slot_id, slot_id_2: null, profesor_id: Number(pid),
     detalle: imposible
-      ? `${dia}: clases en ${planteles.join(" y ")} con solo ${margenMin === Infinity ? "?" : margenMin} min entre ellas — traslado imposible.`
-      : `${dia}: da clases en ${planteles.join(" y ")} el mismo día (revisar tiempos de traslado).`,
+      ? `El ${dia} tiene clases en ${planteles.join(" y ")} con solo ${margenMin === Infinity ? "?" : margenMin} min entre una y otra: no le alcanza para trasladarse. Hay que mover una clase o cambiar de docente.`
+      : `El ${dia} da clases en ${planteles.join(" y ")} el mismo día. Revisa que le dé tiempo de trasladarse entre planteles.`,
   });
 }
 
@@ -252,8 +254,8 @@ for (const s of presenciales) {
       tipo: "sin_aula", severidad: hayCupo ? "media" : "alta",
       slot_id: s.id, slot_id_2: null, profesor_id: null,
       detalle: hayCupo
-        ? `"${s.materia}" (${s.grupo}) ${s.dia ?? "s/día"} ${s.hora_inicio ?? ""}-${s.hora_fin ?? ""}: no hay salón libre a esa hora (${al ?? "?"} alumnos).`
-        : `"${s.materia}" (${s.grupo}): ningún salón tiene cupo para ${al} alumnos (capacidad máxima ${CAP_MAX}).`,
+        ? `"${s.materia}" (${s.grupo}), ${s.dia ?? "sin día"} ${s.hora_inicio ?? ""}-${s.hora_fin ?? ""}: no hay salón libre a esa hora para ${al ?? "?"} alumnos. Cambia el horario o libera un aula.`
+        : `"${s.materia}" (${s.grupo}): ningún salón alcanza para ${al} alumnos (el más grande es de ${CAP_MAX}). Hay que dividir el grupo o conseguir un espacio mayor.`,
     });
   }
 }

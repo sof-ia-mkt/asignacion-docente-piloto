@@ -51,7 +51,9 @@ export function planCorto(nombre: string | null): string {
     .replace(/INGENIER[IÍ]A EN\s+/i, "Ing. ")
     .replace(/INGENIER[IÍ]A\s+/i, "Ing. ")
     .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase())
+    // Capitaliza la 1ª letra de cada palabra. \p{L} + flag u reconoce acentos
+    // (á é í ó ú ñ), así no parte "mecatrónica" en "MecatróNica".
+    .replace(/(^|\s)(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase())
     .replace(/\bIng\.\s*/i, "Ing. ");
 }
 
