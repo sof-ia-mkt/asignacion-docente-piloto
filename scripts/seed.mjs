@@ -127,17 +127,21 @@ try {
   await batchInsert("slots", slotCols, data.slots_mayo.map((s) => mkSlot(s, true)));
   await batchInsert("slots", slotCols, data.slots_mayo.map((s) => mkSlot(s, false)));
 
-  // ---- candidatos por HISTORIAL (solo piloto, +40) ----
+  // ---- candidatos por HISTORIAL (TODOS los docentes de mayo, +40) ----
+  // El historial real es la señal más fuerte para septiembre, no solo el de los 20 piloto.
+  const seenCand = new Set();
   const candRows = [];
-  for (const p of data.docentes_piloto) {
-    const pid = profId[p.nombre];
-    for (const mat of p.historial_materias) {
-      const mid = matId[mat];
-      if (pid && mid) candRows.push({
-        profesor_id: pid, materia_id: mid, fuente: "historial",
-        puntaje: 40, razon: "Impartió esta materia en mayo 2026",
-      });
-    }
+  for (const s of data.slots_mayo) {
+    if (!s.docente || !s.materia) continue;
+    const pid = profId[s.docente], mid = matId[s.materia];
+    if (!pid || !mid) continue;
+    const k = `${pid}|${mid}`;
+    if (seenCand.has(k)) continue;
+    seenCand.add(k);
+    candRows.push({
+      profesor_id: pid, materia_id: mid, fuente: "historial",
+      puntaje: 40, razon: "Impartió esta materia en mayo 2026",
+    });
   }
   await batchInsert("materia_candidatos",
     ["profesor_id", "materia_id", "fuente", "puntaje", "razon"], candRows);

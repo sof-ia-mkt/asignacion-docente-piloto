@@ -117,6 +117,7 @@ for (const doc of data.docentes_piloto) {
   await db.query("delete from materia_candidatos where profesor_id=$1 and fuente='cv'", [pid]);
   let n = 0;
   for (const item of perfil.materias_que_puede_impartir || []) {
+    if (!item?.materia) continue;
     const mid = matByNorm.get(norm(item.materia));
     if (!mid) continue;
     await db.query(
