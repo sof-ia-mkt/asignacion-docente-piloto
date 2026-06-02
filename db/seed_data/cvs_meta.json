@@ -1,0 +1,202 @@
+[
+  {
+    "nombre": "LOPEZ SANCHEZ JOSE ALBERTO",
+    "slug": "lopez-sanchez-jose-alberto",
+    "archivo": "lopez-sanchez-jose-alberto.pdf",
+    "area_inferida": "matematicas",
+    "area": "matematicas",
+    "lic": "Licenciatura en Matemáticas Aplicadas",
+    "maestria": "Maestría en Ciencias con especialidad en Matemáticas Aplicadas",
+    "anios_exp": 16
+  },
+  {
+    "nombre": "HERNANDEZ VIDAL MIGUEL ANGEL",
+    "slug": "hernandez-vidal-miguel-angel",
+    "archivo": "hernandez-vidal-miguel-angel.pdf",
+    "area_inferida": "electromecanica",
+    "area": "electromecanica",
+    "lic": "Ingeniería Electromecánica",
+    "maestria": "Maestría en Ingeniería Mecánica",
+    "anios_exp": 9
+  },
+  {
+    "nombre": "SANDOVAL CHIGUIL JUAN ANTONIO",
+    "slug": "sandoval-chiguil-juan-antonio",
+    "archivo": "sandoval-chiguil-juan-antonio.pdf",
+    "area_inferida": "matematicas",
+    "area": "matematicas",
+    "lic": "Licenciatura en Matemáticas Aplicadas",
+    "maestria": "Maestría en Ciencias con especialidad en Matemáticas Aplicadas",
+    "anios_exp": 6
+  },
+  {
+    "nombre": "ARMENTA QUINTERO ERNESTO ALONSO",
+    "slug": "armenta-quintero-ernesto-alonso",
+    "archivo": "armenta-quintero-ernesto-alonso.pdf",
+    "area_inferida": "matematicas",
+    "area": "matematicas",
+    "lic": "Licenciatura en Matemáticas Aplicadas",
+    "maestria": "Maestría en Ciencias con especialidad en Matemáticas Aplicadas",
+    "anios_exp": 14
+  },
+  {
+    "nombre": "BARRIENTOS BALANDRA ROBERTO CARLOS",
+    "slug": "barrientos-balandra-roberto-carlos",
+    "archivo": "barrientos-balandra-roberto-carlos.pdf",
+    "area_inferida": "administracion",
+    "area": "administracion",
+    "lic": "Licenciatura en Administración de Empresas",
+    "maestria": "Maestría en Administración (MBA)",
+    "anios_exp": 15
+  },
+  {
+    "nombre": "ZARATE ENRIQUE DAVID",
+    "slug": "zarate-enrique-david",
+    "archivo": "zarate-enrique-david.pdf",
+    "area_inferida": "matematicas",
+    "area": "matematicas",
+    "lic": "Licenciatura en Matemáticas Aplicadas",
+    "maestria": "Maestría en Ciencias con especialidad en Matemáticas Aplicadas",
+    "anios_exp": 11
+  },
+  {
+    "nombre": "JACOBO UGALDE TYRON DALED",
+    "slug": "jacobo-ugalde-tyron-daled",
+    "archivo": "jacobo-ugalde-tyron-daled.pdf",
+    "area_inferida": "criminologia",
+    "area": "criminologia",
+    "lic": "Licenciatura en Criminología y Criminalística",
+    "maestria": "Maestría en Ciencias Forenses",
+    "anios_exp": 7
+  },
+  {
+    "nombre": "GONZALEZ GAYTAN JAVIER OVET",
+    "slug": "gonzalez-gaytan-javier-ovet",
+    "archivo": "gonzalez-gaytan-javier-ovet.pdf",
+    "area_inferida": "matematicas",
+    "area": "matematicas",
+    "lic": "Licenciatura en Matemáticas Aplicadas",
+    "maestria": "Maestría en Ciencias con especialidad en Matemáticas Aplicadas",
+    "anios_exp": 18
+  },
+  {
+    "nombre": "LEON CAMES JESUS",
+    "slug": "leon-cames-jesus",
+    "archivo": "leon-cames-jesus.pdf",
+    "area_inferida": "electromecanica",
+    "area": "electromecanica",
+    "lic": "Ingeniería Electromecánica",
+    "maestria": "Maestría en Ingeniería Mecánica",
+    "anios_exp": 7
+  },
+  {
+    "nombre": "ESPITIA VAZQUEZ IVONNE ROSARIO",
+    "slug": "espitia-vazquez-ivonne-rosario",
+    "archivo": "espitia-vazquez-ivonne-rosario.pdf",
+    "area_inferida": "educacion",
+    "area": "educacion",
+    "lic": "Licenciatura en Ciencias de la Educación",
+    "maestria": "Maestría en Educación con especialidad en Innovación Educativa",
+    "anios_exp": 16
+  },
+  {
+    "nombre": "ESTRADA BAÑUELOS JORGE",
+    "slug": "estrada-banuelos-jorge",
+    "archivo": "estrada-banuelos-jorge.pdf",
+    "area_inferida": "criminologia",
+    "area": "criminologia",
+    "lic": "Licenciatura en Criminología y Criminalística",
+    "maestria": "Maestría en Ciencias Forenses",
+    "anios_exp": 12
+  },
+  {
+    "nombre": "FONSECA BELTRAN BRIAN ESLI",
+    "slug": "fonseca-beltran-brian-esli",
+    "archivo": "fonseca-beltran-brian-esli.pdf",
+    "area_inferida": "matematicas",
+    "area": "matematicas",
+    "lic": "Licenciatura en Matemáticas Aplicadas",
+    "maestria": "Maestría en Ciencias con especialidad en Matemáticas Aplicadas",
+    "anios_exp": 11
+  },
+  {
+    "nombre": "SIERRA VAZQUEZ OMAR",
+    "slug": "sierra-vazquez-omar",
+    "archivo": "sierra-vazquez-omar.pdf",
+    "area_inferida": "criminologia",
+    "area": "criminologia",
+    "lic": "Licenciatura en Criminología y Criminalística",
+    "maestria": "Maestría en Ciencias Forenses",
+    "anios_exp": 15
+  },
+  {
+    "nombre": "ZENDEJAS HUERTA RICARDO JESUS",
+    "slug": "zendejas-huerta-ricardo-jesus",
+    "archivo": "zendejas-huerta-ricardo-jesus.pdf",
+    "area_inferida": "electronica",
+    "area": "electronica",
+    "lic": "Ingeniería en Electrónica",
+    "maestria": "Maestría en Ingeniería con orientación en Sistemas Electrónicos",
+    "anios_exp": 13
+  },
+  {
+    "nombre": "MARTINEZ CERVANTES GERARDO",
+    "slug": "martinez-cervantes-gerardo",
+    "archivo": "martinez-cervantes-gerardo.pdf",
+    "area_inferida": "programacion",
+    "area": "programacion",
+    "lic": "Ingeniería en Sistemas Computacionales",
+    "maestria": "Maestría en Ciencias de la Computación",
+    "anios_exp": 6
+  },
+  {
+    "nombre": "CHAVEZ ACOSTA SANDRA LIBIA",
+    "slug": "chavez-acosta-sandra-libia",
+    "archivo": "chavez-acosta-sandra-libia.pdf",
+    "area_inferida": "administracion",
+    "area": "administracion",
+    "lic": "Licenciatura en Administración de Empresas",
+    "maestria": "Maestría en Administración (MBA)",
+    "anios_exp": 16
+  },
+  {
+    "nombre": "RIVERA VICENTE VICTOR HUGO",
+    "slug": "rivera-vicente-victor-hugo",
+    "archivo": "rivera-vicente-victor-hugo.pdf",
+    "area_inferida": "electromecanica",
+    "area": "electromecanica",
+    "lic": "Ingeniería Electromecánica",
+    "maestria": "Maestría en Ingeniería Mecánica",
+    "anios_exp": 10
+  },
+  {
+    "nombre": "FLORES SILLAS VICTOR EDUARDO",
+    "slug": "flores-sillas-victor-eduardo",
+    "archivo": "flores-sillas-victor-eduardo.pdf",
+    "area_inferida": "industrial",
+    "area": "industrial",
+    "lic": "Ingeniería Industrial",
+    "maestria": "Maestría en Ingeniería Industrial y de Calidad",
+    "anios_exp": 11
+  },
+  {
+    "nombre": "GUZMAN GUERRERO JUAN PABLO",
+    "slug": "guzman-guerrero-juan-pablo",
+    "archivo": "guzman-guerrero-juan-pablo.pdf",
+    "area_inferida": "electromecanica",
+    "area": "electromecanica",
+    "lic": "Ingeniería Electromecánica",
+    "maestria": "Maestría en Ingeniería Mecánica",
+    "anios_exp": 8
+  },
+  {
+    "nombre": "RAMOS MENDEZ ERVIN",
+    "slug": "ramos-mendez-ervin",
+    "archivo": "ramos-mendez-ervin.pdf",
+    "area_inferida": "electronica",
+    "area": "electronica",
+    "lic": "Ingeniería en Electrónica",
+    "maestria": "Maestría en Ingeniería con orientación en Sistemas Electrónicos",
+    "anios_exp": 15
+  }
+]
