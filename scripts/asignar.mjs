@@ -16,6 +16,8 @@ import { loadEnv } from "./_env.mjs";
 const env = loadEnv();
 const SCORE_MIN = 25;          // umbral opción A (historial 40, cv-alta 25)
 const SOBRECARGA_SLOTS = 12;   // > este número de slots (~24h/sem) => alerta de sobrecarga
+const PLANTEL_BONUS = 20;      // dio la materia EN ESTE plantel => +20 (se prefiere el fit local)
+const TRASLADO_MIN = 60;       // < este margen entre 2 planteles el mismo día => traslado imposible
 // "Docentes" que en realidad son notas del Excel, no personas: no son asignables.
 const PLACEHOLDERS = ["CAMBIO DE TURNO", "DOCENTE NUEVO", "NO SE APERTURA", "NOSE APERTURA"];
 
@@ -43,7 +45,7 @@ for (const arr of porMateria.values()) arr.sort((a, b) => b.puntaje - a.puntaje)
 
 // ---- slots de septiembre ----
 const slots = (await db.query(
-  `select s.id, s.materia_id, s.grupo_id, s.dia, s.hora_inicio, s.hora_fin, s.tipo, s.modalidad,
+  `select s.id, s.materia_id, s.grupo_id, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, s.modalidad,
           s.aula_id, s.aula_manual, m.nombre materia, g.clave grupo, g.alumnos
      from slots s
      left join materias m on m.id = s.materia_id
@@ -51,6 +53,20 @@ const slots = (await db.query(
     where s.es_historial = false`)).rows
   .map((s) => ({ ...s, ini: toMin(s.hora_inicio), fin: toMin(s.hora_fin) }));
 const slotsById = new Map(slots.map((s) => [s.id, s]));
+
+// ---- ¿en qué plantel(es) dio cada docente cada materia? (de su historial de mayo) ----
+// Sirve para preferir el "fit local": quien ya la dio en ESTE plantel pesa más.
+const histPlantel = new Map();   // `${profesor_id}|${materia_id}` -> Set<plantel>
+for (const r of (await db.query(
+  `select distinct docente_id, materia_id, plantel from slots
+    where es_historial and docente_id is not null and materia_id is not null`)).rows) {
+  const k = `${r.docente_id}|${r.materia_id}`;
+  if (!histPlantel.has(k)) histPlantel.set(k, new Set());
+  histPlantel.get(k).add(r.plantel);
+}
+const dioEnPlantel = (pid, mid, plantel) =>
+  !!plantel && (histPlantel.get(`${pid}|${mid}`)?.has(plantel) ?? false);
+const plantelesDe = (pid, mid) => [...(histPlantel.get(`${pid}|${mid}`) ?? [])];
 
 // ---- catálogo de aulas (Teoría primero, luego por capacidad ascendente: el más chico que alcance) ----
 const tipoRank = (t) => (t === "Teoría" ? 0 : t === "Práctica" ? 1 : 2);
@@ -105,12 +121,17 @@ for (const s of slots) {
     continue;
   }
 
+  // Puntaje efectivo PARA ESTE SLOT: +20 si el candidato ya dio la materia en este plantel.
+  // Así, entre dos que la dieron, gana el local; el de otro plantel sigue siendo válido (queda abajo).
+  const score = (c) => c.puntaje + (dioEnPlantel(c.profesor_id, s.materia_id, s.plantel) ? PLANTEL_BONUS : 0);
+  const ordenados = [...cands].sort((a, b) => score(b) - score(a));
+
   // Restricción dura: el candidato debe estar LIBRE a esa hora (nadie en 2 lugares a la vez).
-  const elegido = cands.find((c) => !(horario.get(c.profesor_id) || []).some((h) => overlap(h, s)));
+  const elegido = ordenados.find((c) => !(horario.get(c.profesor_id) || []).some((h) => overlap(h, s)));
 
   if (!elegido) {
     // Todos los candidatos fuertes ya están ocupados a esa hora -> choque sin resolver.
-    const top = cands[0];
+    const top = ordenados[0];
     const conf = (horario.get(top.profesor_id) || []).find((h) => overlap(h, s));
     const sc = slots.find((x) => x.id === conf.slot_id);
     asignados.push({ slot: s, profesor_id: null });
@@ -121,10 +142,17 @@ for (const s of slots) {
     continue;
   }
 
+  // Nota de plantel en la razón, para que coordinación sepa si la sugerencia es local o cruza campus.
+  const local = dioEnPlantel(elegido.profesor_id, s.materia_id, s.plantel);
+  const otros = plantelesDe(elegido.profesor_id, s.materia_id).filter((p) => p !== s.plantel);
+  const notaPlantel = local
+    ? ` · Mismo plantel (${s.plantel}).`
+    : (otros.length ? ` · Otro plantel: la dio en ${otros.join(", ")}.` : "");
+
   if (!horario.has(elegido.profesor_id)) horario.set(elegido.profesor_id, []);
   horario.get(elegido.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin });
   carga.set(elegido.profesor_id, (carga.get(elegido.profesor_id) || 0) + 1);
-  asignados.push({ slot: s, profesor_id: elegido.profesor_id, puntaje: elegido.puntaje, razon: elegido.razon });
+  asignados.push({ slot: s, profesor_id: elegido.profesor_id, puntaje: score(elegido), razon: (elegido.razon ?? "") + notaPlantel });
 }
 
 // inserta asignaciones
@@ -158,6 +186,35 @@ for (const v of porProfMat.values()) {
   if (v.grupos.size >= REPETIDO_GRUPOS) alertas.push({
     tipo: "docente_repetido", severidad: "media", slot_id: v.slot, slot_id_2: null, profesor_id: v.prof,
     detalle: `Mismo docente cubre "${v.materia}" en ${v.grupos.size} grupos (posible sobre-concentración).`,
+  });
+}
+
+// traslado_plantel: un docente con clases en 2+ planteles el MISMO día.
+// Si el margen entre campus es < TRASLADO_MIN minutos (o se traslapan) => imposible (alta); si no, aviso (media).
+const porProfDia = new Map();   // `${pid}|${dia}` -> [{plantel, ini, fin, slot_id}]
+for (const a of [...asignados, ...manualAsignados]) {
+  if (!a.profesor_id || !a.slot.dia) continue;
+  const k = `${a.profesor_id}|${a.slot.dia}`;
+  if (!porProfDia.has(k)) porProfDia.set(k, []);
+  porProfDia.get(k).push({ plantel: a.slot.plantel, ini: a.slot.ini, fin: a.slot.fin, slot_id: a.slot.id });
+}
+for (const [k, clases] of porProfDia) {
+  const planteles = [...new Set(clases.map((c) => c.plantel).filter(Boolean))];
+  if (planteles.length < 2) continue;
+  const [pid, dia] = k.split("|");
+  let margenMin = Infinity;   // minutos libres entre dos clases de planteles distintos
+  for (let i = 0; i < clases.length; i++) for (let j = i + 1; j < clases.length; j++) {
+    const a = clases[i], b = clases[j];
+    if (a.plantel === b.plantel || a.ini == null || a.fin == null || b.ini == null || b.fin == null) continue;
+    margenMin = Math.min(margenMin, a.ini <= b.ini ? b.ini - a.fin : a.ini - b.fin);
+  }
+  const imposible = margenMin < TRASLADO_MIN;
+  alertas.push({
+    tipo: "traslado_plantel", severidad: imposible ? "alta" : "media",
+    slot_id: clases[clases.length - 1].slot_id, slot_id_2: null, profesor_id: Number(pid),
+    detalle: imposible
+      ? `${dia}: clases en ${planteles.join(" y ")} con solo ${margenMin === Infinity ? "?" : margenMin} min entre ellas — traslado imposible.`
+      : `${dia}: da clases en ${planteles.join(" y ")} el mismo día (revisar tiempos de traslado).`,
   });
 }
 

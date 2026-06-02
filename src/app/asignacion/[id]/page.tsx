@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSlot, buscarProfesores } from "@/lib/queries";
-import { Estado, TipoClase, planCorto } from "@/lib/ui";
+import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge } from "@/lib/ui";
 import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, editarHorario, eliminarSlot } from "@/app/actions";
 
 const DIAS = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO", "N/A"];
@@ -37,6 +37,7 @@ export default async function SlotPage({
             <div className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-slate-500">
               <TipoClase t={slot.tipo} />
               {slot.modalidad && <span>{slot.modalidad}</span>}
+              {slot.plantel && <span className="font-medium text-slate-700">{plantelCorto(slot.plantel)}</span>}
               <span>Grupo {slot.grupo ?? "—"}</span>
               {slot.alumnos != null && <span>{slot.alumnos} alumnos</span>}
               <span>{slot.dia ? `${slot.dia} ${slot.hora_inicio}-${slot.hora_fin}` : "sin horario"}</span>
@@ -173,6 +174,7 @@ export default async function SlotPage({
             <thead className="text-slate-500 text-left">
               <tr>
                 <th className="py-1 font-medium">Docente</th>
+                <th className="py-1 font-medium">Plantel</th>
                 <th className="py-1 font-medium">Fuente</th>
                 <th className="py-1 font-medium text-right">Puntaje</th>
                 <th className="py-1 font-medium text-right">Carga</th>
@@ -184,6 +186,9 @@ export default async function SlotPage({
                 <tr key={c.profesor_id} className={slot.docente_id === c.profesor_id ? "bg-blue-50" : ""}>
                   <td className="py-1.5 pr-2">
                     <Link href={`/profesores/${c.profesor_id}`} className="text-blue-700 hover:underline">{c.nombre}</Link>
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <PlantelBadge planteles={c.hist_planteles ? c.hist_planteles.split(",") : []} destino={slot.plantel} />
                   </td>
                   <td className="py-1.5 pr-2 text-slate-600">{c.fuentes}</td>
                   <td className="py-1.5 pr-2 text-right font-medium">{c.puntaje}</td>

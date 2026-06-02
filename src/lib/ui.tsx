@@ -39,6 +39,7 @@ const TIPO_LABEL: Record<string, string> = {
   docente_repetido: "Docente repetido",
   sin_aula: "Sin aula",
   choque_aula: "Choque de aula",
+  traslado_plantel: "Traslado entre planteles",
 };
 export const tipoLabel = (t: string) => TIPO_LABEL[t] ?? t;
 
@@ -80,6 +81,32 @@ export function TipoClase({ t }: { t: string | null }) {
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${CLASE_COLOR[key] ?? SEV.baja}`}>
       {t}
+    </span>
+  );
+}
+
+// Etiqueta de plantel: dice si el docente dio la materia en el MISMO plantel del slot destino
+// (lo más natural) o en OTRO plantel (válido, pero implica que el maestro se mueve de campus).
+// Sin `destino`, solo informa dónde la dio (p.ej. en la ficha del maestro).
+export function PlantelBadge({ planteles, destino }: { planteles: string[]; destino?: string | null }) {
+  const limpios = planteles.filter(Boolean);
+  if (limpios.length === 0) return <span className="text-slate-400 text-xs">—</span>;
+  const cortos = [...new Set(limpios.map((p) => plantelCorto(p)))].join(", ");
+  if (destino == null) {
+    return (
+      <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-100 text-slate-600 border-slate-200">
+        La dio en {cortos}
+      </span>
+    );
+  }
+  const mismo = limpios.includes(destino);
+  return mismo ? (
+    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-green-100 text-green-800 border-green-200">
+      Mismo plantel
+    </span>
+  ) : (
+    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-amber-100 text-amber-800 border-amber-200">
+      Otro plantel: {cortos}
     </span>
   );
 }

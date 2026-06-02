@@ -17,17 +17,29 @@ export async function getResumen() {
   return { ...r, alertas };
 }
 
-export async function getProfesoresCV() {
+// Lista de TODOS los profesores (los del Excel + los dados de alta). Filtro opcional por CV.
+export async function getProfesores(cv: "" | "cv" | "sincv" = "") {
+  const cond =
+    cv === "cv" ? "where exists(select 1 from cv_competencias c where c.profesor_id=p.id)" :
+    cv === "sincv" ? "where not exists(select 1 from cv_competencias c where c.profesor_id=p.id)" : "";
   return q<{
     id: number; nombre: string; area_cv: string | null; anios_experiencia: number | null;
-    licenciatura: string | null; n_cand: number; n_asig: number;
+    licenciatura: string | null; tiene_cv: boolean; n_cand: number; n_asig: number;
   }>(
     `select p.id, p.nombre, p.area_cv, p.anios_experiencia, p.licenciatura,
+            exists(select 1 from cv_competencias c where c.profesor_id=p.id) tiene_cv,
             (select count(*) from materia_candidatos mc where mc.profesor_id=p.id)::int n_cand,
             (select count(*) from asignaciones a where a.profesor_id=p.id)::int n_asig
-       from profesores p
-       join cv_competencias c on c.profesor_id = p.id
+       from profesores p ${cond}
       order by p.nombre`);
+}
+
+export async function getProfesoresConteo() {
+  const [r] = await q<{ total: number; con_cv: number }>(
+    `select count(*)::int total,
+            count(*) filter (where exists(select 1 from cv_competencias c where c.profesor_id=p.id))::int con_cv
+       from profesores p`);
+  return r;
 }
 
 export async function getProfesor(id: number) {
@@ -46,14 +58,24 @@ export async function getProfesor(id: number) {
        from materia_candidatos mc join materias m on m.id = mc.materia_id
       where mc.profesor_id = $1 order by mc.puntaje desc, m.nombre`, [id]);
   const asignaciones = await q<{
-    materia: string; grupo: string | null; dia: string | null; hora_inicio: string | null;
-    hora_fin: string | null; estado: string;
+    materia: string; grupo: string | null; plantel: string | null; dia: string | null;
+    hora_inicio: string | null; hora_fin: string | null; tipo: string | null; estado: string;
   }>(
-    `select m.nombre materia, g.clave grupo, s.dia, s.hora_inicio, s.hora_fin, a.estado
+    `select m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado
        from asignaciones a join slots s on s.id = a.slot_id
        join materias m on m.id = s.materia_id left join grupos g on g.id = s.grupo_id
-      where a.profesor_id = $1 order by s.dia, s.hora_inicio`, [id]);
-  return { prof, candidatas, asignaciones };
+      where a.profesor_id = $1 order by s.plantel, s.dia, s.hora_inicio`, [id]);
+  // Clases que YA dio (historial real de mayo): slots marcados es_historial con este docente.
+  const historial = await q<{
+    materia: string; grupo: string | null; plantel: string | null;
+    cuatrimestre: string | null; tipo: string | null;
+  }>(
+    `select m.nombre materia, g.clave grupo, s.plantel, s.cuatrimestre, s.tipo
+       from slots s join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id
+      where s.es_historial = true and s.docente_id = $1
+      order by s.plantel, m.nombre`, [id]);
+  return { prof, candidatas, asignaciones, historial };
 }
 
 export type SlotFiltro = { estado?: string; q?: string; plantel?: string };
@@ -102,13 +124,14 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 100) {
 export async function getSlot(id: number) {
   const [slot] = await q<{
     id: number; materia_id: number | null; materia: string | null; grupo: string | null;
+    plantel: string | null;
     dia: string | null; hora_inicio: string | null; hora_fin: string | null; tipo: string | null;
     modalidad: string | null; cuatrimestre: string | null; plan: string | null;
     alumnos: number | null; aula_id: number | null; aula: string | null; aula_capacidad: number | null;
     docente_id: number | null; docente: string | null; estado: string | null;
     puntaje: number | null; razon: string | null;
   }>(
-    `select s.id, s.materia_id, m.nombre materia, g.clave grupo, s.dia, s.hora_inicio, s.hora_fin,
+    `select s.id, s.materia_id, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin,
             s.tipo, s.modalidad, s.cuatrimestre, pl.nombre plan, g.alumnos,
             s.aula_id, au.clave aula, au.capacidad aula_capacidad,
             a.profesor_id docente_id, p.nombre docente, a.estado, a.puntaje, a.razon
@@ -123,15 +146,28 @@ export async function getSlot(id: number) {
   if (!slot) return null;
   const candidatos = slot.materia_id ? await q<{
     profesor_id: number; nombre: string; puntaje: number; fuentes: string; razon: string; carga: number;
+    hist_planteles: string | null;
   }>(
     `select mc.profesor_id, pr.nombre, sum(mc.puntaje)::int puntaje,
             string_agg(distinct mc.fuente, ',') fuentes,
             string_agg(mc.razon, ' | ' order by mc.puntaje desc) razon,
-            (select count(*) from asignaciones a where a.profesor_id = mc.profesor_id)::int carga
+            (select count(*) from asignaciones a where a.profesor_id = mc.profesor_id)::int carga,
+            (select string_agg(distinct s2.plantel, ',')
+               from slots s2
+              where s2.es_historial and s2.docente_id = mc.profesor_id
+                and s2.materia_id = $1) hist_planteles
        from materia_candidatos mc join profesores pr on pr.id = mc.profesor_id
       where mc.materia_id = $1 and mc.puntaje >= 25 and pr.nombre <> all($2)
       group by mc.profesor_id, pr.nombre
       order by puntaje desc, pr.nombre limit 8`, [slot.materia_id, PLACEHOLDERS]) : [];
+
+  // Reordena: quien ya dio la materia EN ESTE plantel va primero (fit más natural),
+  // luego por puntaje. Los de otro plantel siguen siendo válidos, pero quedan abajo.
+  const enEstePlantel = (hp: string | null) =>
+    !!slot.plantel && !!hp && hp.split(",").includes(slot.plantel);
+  candidatos.sort((a, b) =>
+    Number(enEstePlantel(b.hist_planteles)) - Number(enEstePlantel(a.hist_planteles)) ||
+    b.puntaje - a.puntaje);
 
   // Candidatos de aula: salones que alcanzan para el grupo, libres primero (sin choque a esa hora).
   // Solo aplica a clases presenciales; las virtuales no ocupan salón.
@@ -192,14 +228,34 @@ export async function getAulas() {
   return { aulas, resumen: grupoMax[0] };
 }
 
-export async function getAlertas() {
+export async function getAlertas(f: { tipo?: string; severidad?: string; plantel?: string } = {}) {
+  const cond: string[] = [];
+  const params: unknown[] = [];
+  if (f.tipo) { params.push(f.tipo); cond.push(`a.tipo = $${params.length}`); }
+  if (f.severidad) { params.push(f.severidad); cond.push(`a.severidad = $${params.length}`); }
+  if (f.plantel) { params.push(f.plantel); cond.push(`s.plantel = $${params.length}`); }
+  const where = cond.length ? `where ${cond.join(" and ")}` : "";
   return q<{
     id: number; tipo: string; severidad: string; detalle: string;
-    slot_id: number | null; profesor_id: number | null; profesor: string | null;
+    slot_id: number | null; profesor_id: number | null; profesor: string | null; plantel: string | null;
   }>(
-    `select a.id, a.tipo, a.severidad, a.detalle, a.slot_id, a.profesor_id, p.nombre profesor
-       from alertas a left join profesores p on p.id = a.profesor_id
-      order by case a.severidad when 'alta' then 0 when 'media' then 1 else 2 end, a.tipo, a.id`);
+    `select a.id, a.tipo, a.severidad, a.detalle, a.slot_id, a.profesor_id, p.nombre profesor, s.plantel
+       from alertas a
+       left join profesores p on p.id = a.profesor_id
+       left join slots s on s.id = a.slot_id
+       ${where}
+      order by case a.severidad when 'alta' then 0 when 'media' then 1 else 2 end, a.tipo, a.id`,
+    params);
+}
+
+// Conteo de alertas por tipo dentro del plantel elegido (para las tarjetas de resumen).
+export async function getAlertasResumen(plantel?: string) {
+  const cond = plantel ? "where s.plantel = $1" : "";
+  const p = plantel ? [plantel] : [];
+  return q<{ tipo: string; n: number }>(
+    `select a.tipo, count(*)::int n
+       from alertas a left join slots s on s.id = a.slot_id
+       ${cond} group by a.tipo`, p);
 }
 
 // ---------- Dashboards (todo agregación sobre la BD, $0) ----------
