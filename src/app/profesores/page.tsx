@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getProfesores, getProfesoresConteo } from "@/lib/queries";
+import { plantelCorto } from "@/lib/ui";
 
 const FILTROS = [
   { v: "", label: "Todos" },
@@ -47,7 +48,7 @@ export default async function ProfesoresPage({
             <tr className="text-left">
               <th className="px-4 py-2 font-medium">Docente</th>
               <th className="px-4 py-2 font-medium">CV</th>
-              <th className="px-4 py-2 font-medium">Área (CV)</th>
+              <th className="px-4 py-2 font-medium">Plantel(es)</th>
               <th className="px-4 py-2 font-medium">Licenciatura</th>
               <th className="px-4 py-2 font-medium text-right">Exp.</th>
               <th className="px-4 py-2 font-medium text-right">Materias candidatas</th>
@@ -69,7 +70,11 @@ export default async function ProfesoresPage({
                     <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-100 text-slate-500 border-slate-200">historial</span>
                   )}
                 </td>
-                <td className="px-4 py-2 text-slate-600">{p.area_cv ?? "—"}</td>
+                <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                  {p.planteles
+                    ? [...new Set(p.planteles.split(",").filter(Boolean).map(plantelCorto))].join(", ")
+                    : "—"}
+                </td>
                 <td className="px-4 py-2 text-slate-600">{p.licenciatura ?? "—"}</td>
                 <td className="px-4 py-2 text-right text-slate-600">{p.anios_experiencia ?? "—"}</td>
                 <td className="px-4 py-2 text-right">{p.n_cand}</td>

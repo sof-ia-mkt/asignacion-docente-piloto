@@ -23,13 +23,19 @@ export async function getProfesores(cv: "" | "cv" | "sincv" = "") {
     cv === "cv" ? "where exists(select 1 from cv_competencias c where c.profesor_id=p.id)" :
     cv === "sincv" ? "where not exists(select 1 from cv_competencias c where c.profesor_id=p.id)" : "";
   return q<{
-    id: number; nombre: string; area_cv: string | null; anios_experiencia: number | null;
+    id: number; nombre: string; anios_experiencia: number | null;
     licenciatura: string | null; tiene_cv: boolean; n_cand: number; n_asig: number;
+    planteles: string | null;
   }>(
-    `select p.id, p.nombre, p.area_cv, p.anios_experiencia, p.licenciatura,
+    `select p.id, p.nombre, p.anios_experiencia, p.licenciatura,
             exists(select 1 from cv_competencias c where c.profesor_id=p.id) tiene_cv,
             (select count(*) from materia_candidatos mc where mc.profesor_id=p.id)::int n_cand,
-            (select count(*) from asignaciones a where a.profesor_id=p.id)::int n_asig
+            (select count(*) from asignaciones a where a.profesor_id=p.id)::int n_asig,
+            (select string_agg(distinct pl, ',') from (
+               select s.plantel pl from slots s where s.es_historial and s.docente_id = p.id
+               union
+               select s2.plantel from asignaciones a join slots s2 on s2.id = a.slot_id where a.profesor_id = p.id
+             ) x where pl is not null) planteles
        from profesores p ${cond}
       order by p.nombre`);
 }
