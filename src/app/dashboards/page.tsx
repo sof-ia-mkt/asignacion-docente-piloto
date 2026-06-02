@@ -23,10 +23,10 @@ export default async function DashboardsHome({
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Materias por asignar" value={e.total} hint="septiembre" />
-        <Card title="Cobertura" value={`${pct}%`} hint={`${e.asignados} asignados`} />
-        <Card title="Sin asignar" value={sinAsignar} hint="requieren revisión" />
-        <Card title="Confirmados" value={e.confirmados} hint={`${e.sugeridos} aún sugeridos`} />
+        <Card title="Clases de septiembre" value={e.total} hint="por asignar y confirmar" />
+        <Card title="Con docente propuesto" value={`${pct}%`} hint={`${e.asignados} clases · falta confirmar`} />
+        <Card title="Sin docente" value={sinAsignar} hint="nadie propuesto aún" />
+        <Card title="Confirmadas" value={e.confirmados} hint={`${e.sugeridos} aún por revisar`} />
         <Card title="Docentes con carga" value={doc.resumen.docentes} hint={`promedio ${doc.resumen.avgc} materias`} />
         <Card title="Sobrecargados" value={doc.resumen.sobre} hint=">12 materias" />
         <Card title="Alertas" value={totalAlertas} hint={`${altas} de prioridad alta`} />
@@ -36,8 +36,8 @@ export default async function DashboardsHome({
       <div className="grid md:grid-cols-2 gap-4">
         <Panel title="Asignación de septiembre">
           <Donut data={[
-            { name: "Asignados", value: e.asignados, color: "#16a34a" },
-            { name: "Sin asignar", value: sinAsignar, color: "#dc2626" },
+            { name: "Con docente", value: e.asignados, color: "#16a34a" },
+            { name: "Sin docente", value: sinAsignar, color: "#dc2626" },
           ]} />
         </Panel>
         <Panel title="Origen de la recomendación">

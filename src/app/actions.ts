@@ -3,7 +3,7 @@
 // crearDocente por CV SÍ llama a Claude una vez (~$0.05); por camino manual es $0.
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { q } from "@/lib/db";
+import { q, pool } from "@/lib/db";
 import { leerCV } from "@/lib/cv";
 
 const slugify = (s: string) =>
@@ -152,11 +152,40 @@ export async function quitarAula(slotId: number) {
 }
 
 // Quita la asignación del slot (lo deja sin docente).
-export async function quitarAsignacion(slotId: number) {
+// profesorId es opcional: si viene (p. ej. al quitar desde la ficha del docente),
+// también se refresca esa página para que la clase desaparezca de su lista al instante.
+export async function quitarAsignacion(slotId: number, profesorId?: number) {
   await q("update asignaciones set profesor_id=null, estado='rechazada', automatica=false where slot_id=$1", [slotId]);
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
+  if (profesorId) revalidatePath(`/profesores/${profesorId}`);
   revalidatePath("/");
+}
+
+// Borra un docente por completo. Antes de borrarlo:
+//  - libera sus clases de septiembre (se borran sus asignaciones; el motor podrá reasignarlas),
+//  - desliga su historial de mayo (slots quedan sin docente, no se pierden las clases),
+//  - elimina sus alertas. cv_competencias y materia_candidatos caen por cascade.
+// Todo en una transacción: o se hace completo, o no se hace.
+export async function eliminarDocente(profesorId: number) {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("delete from asignaciones where profesor_id=$1", [profesorId]);
+    await client.query("update slots set docente_id=null where docente_id=$1", [profesorId]);
+    await client.query("delete from alertas where profesor_id=$1", [profesorId]);
+    await client.query("delete from profesores where id=$1", [profesorId]); // cascade: cv + candidatos
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
+  }
+  revalidatePath("/profesores");
+  revalidatePath("/asignacion");
+  revalidatePath("/");
+  redirect("/profesores");
 }
 
 // ---------- Edición de la materia por grupo (lo que en datos llamamos "slot") ----------

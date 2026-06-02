@@ -7,6 +7,12 @@ export const metadata: Metadata = {
   description: "Recomendación y asignación de docentes por cuatrimestre (piloto Casa Blanca)",
 };
 
+// Todas las páginas leen datos en vivo de la base y están detrás del candado:
+// no tiene sentido prerenderizarlas en el build (y hacerlo agota las conexiones
+// de Supabase al correr varios workers en paralelo). Render dinámico en cada request.
+// Se hereda a todas las rutas hijas.
+export const dynamic = "force-dynamic";
+
 const nav = [
   { href: "/", label: "Inicio" },
   { href: "/dashboards", label: "Dashboards" },

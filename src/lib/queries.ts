@@ -5,10 +5,13 @@ export const PLACEHOLDERS = ["CAMBIO DE TURNO", "DOCENTE NUEVO", "NO SE APERTURA
 
 export async function getResumen() {
   const [r] = await q<{
-    sep_total: number; asignados: number; cvs: number; profes: number; materias: number;
+    sep_total: number; asignados: number; confirmados: number; sugeridos: number;
+    cvs: number; profes: number; materias: number;
   }>(`select
         (select count(*) from slots where es_historial=false)::int sep_total,
         (select count(*) from asignaciones where profesor_id is not null)::int asignados,
+        (select count(*) from asignaciones where estado='confirmada')::int confirmados,
+        (select count(*) from asignaciones where estado='sugerida' and profesor_id is not null)::int sugeridos,
         (select count(*) from cv_competencias)::int cvs,
         (select count(*) from profesores)::int profes,
         (select count(*) from materias)::int materias`);
@@ -64,13 +67,13 @@ export async function getProfesor(id: number) {
        from materia_candidatos mc join materias m on m.id = mc.materia_id
       where mc.profesor_id = $1 order by mc.puntaje desc, m.nombre`, [id]);
   const asignaciones = await q<{
-    materia: string; grupo: string | null; plantel: string | null; dia: string | null;
+    slot_id: number; materia: string; grupo: string | null; plantel: string | null; dia: string | null;
     hora_inicio: string | null; hora_fin: string | null; tipo: string | null; estado: string;
   }>(
-    `select m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado
+    `select s.id slot_id, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado
        from asignaciones a join slots s on s.id = a.slot_id
        join materias m on m.id = s.materia_id left join grupos g on g.id = s.grupo_id
-      where a.profesor_id = $1 order by s.plantel, s.dia, s.hora_inicio`, [id]);
+      where a.profesor_id = $1 and a.profesor_id is not null order by s.plantel, s.dia, s.hora_inicio`, [id]);
   // Clases que YA dio (historial real de mayo): slots marcados es_historial con este docente.
   const historial = await q<{
     materia: string; grupo: string | null; plantel: string | null;

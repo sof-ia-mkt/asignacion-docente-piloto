@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProfesor } from "@/lib/queries";
 import { Estado, TipoClase, plantelCorto, PlantelBadge } from "@/lib/ui";
+import { quitarAsignacion, eliminarDocente } from "@/app/actions";
+import { ConfirmButton } from "@/lib/confirm-button";
 
 export default async function ProfesorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -58,13 +60,16 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       {/* Números rápidos */}
       <div className="grid grid-cols-3 gap-2">
         {stat(historial.length, "Clases que dio (mayo)", "text-slate-700")}
-        {stat(asignaciones.length, "Clases que da (septiembre)", "text-green-700")}
+        {stat(asignaciones.length, "Asignadas en septiembre", "text-green-700")}
         {stat(candidatas.length, "Materias que puede dar", "text-blue-700")}
       </div>
 
       {/* Lo que da AHORA: lo más accionable arriba */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-medium text-slate-700 mb-3">Clases que da ahora (septiembre)</h2>
+        <h2 className="text-sm font-medium text-slate-700">Clases de septiembre asignadas a este docente</h2>
+        <p className="mb-3 text-xs text-slate-400">
+          &quot;Sugerida&quot; = el sistema la propuso, falta que coordinación la confirme · &quot;Confirmada&quot; = ya aprobada por coordinación.
+        </p>
         {asignaciones.length === 0 ? (
           <p className="text-sm text-slate-400">Todavía no tiene clases asignadas para septiembre.</p>
         ) : (
@@ -78,6 +83,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
                   <th className="py-1 font-medium">Plantel</th>
                   <th className="py-1 font-medium">Horario</th>
                   <th className="py-1 font-medium">Estado</th>
+                  <th className="py-1"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -89,6 +95,18 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
                     <td className="py-1.5 pr-2 text-slate-600 whitespace-nowrap">{plantelCorto(a.plantel)}</td>
                     <td className="py-1.5 pr-2 text-slate-600 whitespace-nowrap">{a.dia ? `${a.dia} ${a.hora_inicio}-${a.hora_fin}` : "—"}</td>
                     <td className="py-1.5"><Estado e={a.estado} /></td>
+                    <td className="py-1.5 text-right whitespace-nowrap">
+                      <div className="flex justify-end gap-2">
+                        <Link href={`/asignacion/${a.slot_id}`} className="text-blue-700 hover:underline text-xs">Ver</Link>
+                        <form action={quitarAsignacion.bind(null, a.slot_id, prof.id)}>
+                          <ConfirmButton
+                            message={`¿Quitar a ${prof.nombre} de "${a.materia}"? La clase quedará sin docente (libre para reasignar).`}
+                            className="text-red-600 hover:underline text-xs">
+                            Quitar
+                          </ConfirmButton>
+                        </form>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -184,6 +202,30 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
           )}
         </div>
       </details>
+
+      {/* Borrar docente: acción destructiva, separada y con aviso de lo que implica. */}
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-medium text-red-800">Borrar este docente</h2>
+            <p className="mt-0.5 text-xs text-red-600">
+              Úsalo si el docente ya no va (renunció, se duplicó, etc.). Se elimina del sistema junto con su
+              CV y las materias que podía dar.
+              {asignaciones.length > 0
+                ? ` Sus ${asignaciones.length} clase${asignaciones.length === 1 ? "" : "s"} de septiembre quedarán sin maestro (libres para reasignar).`
+                : " No tiene clases asignadas en septiembre."}
+              {" "}No se puede deshacer.
+            </p>
+          </div>
+          <form action={eliminarDocente.bind(null, prof.id)}>
+            <ConfirmButton
+              message={`¿Borrar definitivamente a ${prof.nombre}? Se elimina del sistema junto con su CV y las materias que podía dar.${asignaciones.length > 0 ? ` Sus ${asignaciones.length} clase(s) de septiembre quedarán sin maestro.` : ""} Esto NO se puede deshacer.`}
+              className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">
+              Borrar docente
+            </ConfirmButton>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

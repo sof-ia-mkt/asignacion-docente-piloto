@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getSlot, buscarProfesores } from "@/lib/queries";
 import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge } from "@/lib/ui";
 import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, editarHorario, eliminarSlot } from "@/app/actions";
+import { ConfirmButton } from "@/lib/confirm-button";
 
 const DIAS = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO", "N/A"];
 
@@ -61,8 +62,12 @@ export default async function SlotPage({
                   <button className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm">Confirmar sugerencia</button>
                 </form>
               )}
-              <form action={quitarAsignacion.bind(null, slotId)}>
-                <button className="px-3 py-1.5 rounded-md border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">Quitar docente</button>
+              <form action={quitarAsignacion.bind(null, slotId, slot.docente_id ?? undefined)}>
+                <ConfirmButton
+                  message="¿Quitar el docente de esta clase? Quedará sin maestro (libre para reasignar)."
+                  className="px-3 py-1.5 rounded-md border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">
+                  Quitar docente
+                </ConfirmButton>
               </form>
             </div>
           )}
@@ -278,7 +283,11 @@ export default async function SlotPage({
             </p>
           </div>
           <form action={eliminarSlot.bind(null, slotId)}>
-            <button className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">Eliminar</button>
+            <ConfirmButton
+              message="¿Eliminar esta clase del cuatrimestre? Se borra junto con su asignación y alertas. No se puede deshacer."
+              className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">
+              Eliminar
+            </ConfirmButton>
           </form>
         </div>
       </div>

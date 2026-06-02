@@ -11,30 +11,30 @@ export default async function CoberturaPage({
   const pct = e.total ? Math.round((e.asignados / e.total) * 100) : 0;
   const series = [
     { key: "n", label: "Total", color: COLORS.slate },
-    { key: "asig", label: "Asignados", color: COLORS.green },
+    { key: "asig", label: "Con docente", color: COLORS.green },
   ];
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Total de materias" value={e.total} />
-        <Card title="Asignados" value={`${e.asignados}`} hint={`${pct}%`} />
-        <Card title="Sin asignar" value={sinAsignar} />
-        <Card title="Confirmados" value={e.confirmados} hint={`${e.sugeridos} sugeridos`} />
+        <Card title="Total de clases" value={e.total} />
+        <Card title="Con docente propuesto" value={`${e.asignados}`} hint={`${pct}% · falta confirmar`} />
+        <Card title="Sin docente" value={sinAsignar} />
+        <Card title="Confirmadas" value={e.confirmados} hint={`${e.sugeridos} por revisar`} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Panel title="Asignado vs sin asignar">
+        <Panel title="Con docente vs sin docente">
           <Donut data={[
-            { name: "Asignados", value: e.asignados, color: COLORS.green },
-            { name: "Sin asignar", value: sinAsignar, color: COLORS.red },
+            { name: "Con docente", value: e.asignados, color: COLORS.green },
+            { name: "Sin docente", value: sinAsignar, color: COLORS.red },
           ]} />
         </Panel>
         <Panel title="Embudo de estados">
           <Donut data={[
-            { name: "Confirmados", value: e.confirmados, color: COLORS.green },
-            { name: "Sugeridos (sin revisar)", value: e.sugeridos, color: COLORS.blue },
-            { name: "Sin asignar", value: sinAsignar, color: COLORS.red },
+            { name: "Confirmadas", value: e.confirmados, color: COLORS.green },
+            { name: "Sugeridas (sin revisar)", value: e.sugeridos, color: COLORS.blue },
+            { name: "Sin docente", value: sinAsignar, color: COLORS.red },
           ]} />
         </Panel>
       </div>

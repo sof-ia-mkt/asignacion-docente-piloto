@@ -4,8 +4,8 @@ import { Estado, TipoClase, planCorto, plantelCorto } from "@/lib/ui";
 
 const FILTROS = [
   { v: "", label: "Todos" },
-  { v: "sin_asignar", label: "Sin asignar" },
-  { v: "asignado", label: "Asignados" },
+  { v: "sin_asignar", label: "Sin docente" },
+  { v: "asignado", label: "Con docente" },
 ];
 
 export default async function AsignacionPage({
