@@ -2,8 +2,11 @@ import { getDashCobertura } from "@/lib/queries";
 import { Card, Panel } from "@/lib/ui";
 import { Donut, GroupedBars, COLORS } from "@/lib/charts";
 
-export default async function CoberturaPage() {
-  const { estados: e, porTipo, porTurno, porCuatri } = await getDashCobertura();
+export default async function CoberturaPage({
+  searchParams,
+}: { searchParams: Promise<{ plantel?: string }> }) {
+  const plantel = (await searchParams).plantel ?? "";
+  const { estados: e, porTipo, porTurno, porCuatri } = await getDashCobertura(plantel);
   const sinAsignar = e.total - e.asignados;
   const pct = e.total ? Math.round((e.asignados / e.total) * 100) : 0;
   const series = [
@@ -14,7 +17,7 @@ export default async function CoberturaPage() {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Total slots" value={e.total} />
+        <Card title="Total de materias" value={e.total} />
         <Card title="Asignados" value={`${e.asignados}`} hint={`${pct}%`} />
         <Card title="Sin asignar" value={sinAsignar} />
         <Card title="Confirmados" value={e.confirmados} hint={`${e.sugeridos} sugeridos`} />

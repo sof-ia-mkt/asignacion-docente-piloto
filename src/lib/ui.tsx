@@ -37,8 +37,52 @@ const TIPO_LABEL: Record<string, string> = {
   sin_candidato: "Sin candidato",
   sobrecarga: "Sobrecarga",
   docente_repetido: "Docente repetido",
+  sin_aula: "Sin aula",
+  choque_aula: "Choque de aula",
 };
 export const tipoLabel = (t: string) => TIPO_LABEL[t] ?? t;
+
+// Nombre corto del plan: "LICENCIATURA EN INGENIERÍA MECATRÓNICA" -> "Ing. Mecatrónica".
+export function planCorto(nombre: string | null): string {
+  if (!nombre) return "—";
+  return nombre
+    .replace(/^LICENCIATURA EN\s+/i, "")
+    .replace(/INGENIER[IÍ]A EN\s+/i, "Ing. ")
+    .replace(/INGENIER[IÍ]A\s+/i, "Ing. ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\bIng\.\s*/i, "Ing. ");
+}
+
+// Nombre corto y legible del plantel para chips/columnas.
+const PLANTEL_CORTO: Record<string, string> = {
+  "CASA BLANCA": "Casa Blanca",
+  "OTAY": "Otay",
+  "TECATE": "Tecate",
+  "PALMAS": "Palmas",
+};
+export function plantelCorto(nombre: string | null): string {
+  if (!nombre) return "—";
+  return PLANTEL_CORTO[nombre.trim().toUpperCase()] ?? nombre;
+}
+
+// Etiqueta de color para el tipo de clase (Disciplinar / Módulo 1-3 / Virtual).
+const CLASE_COLOR: Record<string, string> = {
+  DISCIPLINAR: "bg-violet-100 text-violet-800 border-violet-200",
+  VIRTUAL: "bg-sky-100 text-sky-800 border-sky-200",
+  "MÓDULO 1": "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "MÓDULO 2": "bg-amber-100 text-amber-800 border-amber-200",
+  "MÓDULO 3": "bg-rose-100 text-rose-800 border-rose-200",
+};
+export function TipoClase({ t }: { t: string | null }) {
+  if (!t) return <span className="text-slate-400 text-xs">—</span>;
+  const key = t.trim().toUpperCase();
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${CLASE_COLOR[key] ?? SEV.baja}`}>
+      {t}
+    </span>
+  );
+}
 
 export function Panel({ title, children, className = "" }: { title?: string; children: React.ReactNode; className?: string }) {
   return (

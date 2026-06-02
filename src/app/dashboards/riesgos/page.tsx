@@ -5,8 +5,11 @@ import { CBars, HBars, COLORS } from "@/lib/charts";
 
 const SEV_COLOR: Record<string, string> = { alta: COLORS.red, media: COLORS.amber, baja: COLORS.slate };
 
-export default async function RiesgosPage() {
-  const { porTipo, materiasSinCand } = await getDashRiesgos();
+export default async function RiesgosPage({
+  searchParams,
+}: { searchParams: Promise<{ plantel?: string }> }) {
+  const plantel = (await searchParams).plantel ?? "";
+  const { porTipo, materiasSinCand } = await getDashRiesgos(plantel);
   // Suma por tipo (combina severidades) y toma el color de la severidad más alta presente.
   const byTipo = new Map<string, { tipo: string; n: number; sev: string }>();
   for (const r of porTipo) {
@@ -26,7 +29,7 @@ export default async function RiesgosPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Alertas totales" value={total} />
         <Card title="Prioridad alta" value={altas} />
-        <Card title="Materias sin candidato" value={materiasSinCand.reduce((a, x) => a + x.n, 0)} hint="slots afectados" />
+        <Card title="Materias sin candidato" value={materiasSinCand.reduce((a, x) => a + x.n, 0)} hint="grupos afectados" />
         <Card title="Tipos de alerta" value={tipoData.length} />
       </div>
 
@@ -34,7 +37,7 @@ export default async function RiesgosPage() {
         <CBars data={tipoData} xKey="tipo" valueKey="n" />
       </Panel>
 
-      <Panel title="Materias críticas — más slots sin candidato fuerte">
+      <Panel title="Materias críticas — en más grupos sin candidato fuerte">
         {materiasSinCand.length === 0 ? (
           <p className="text-sm text-slate-400">Sin materias críticas.</p>
         ) : (

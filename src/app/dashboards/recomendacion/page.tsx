@@ -2,8 +2,11 @@ import { getDashRecomendacion } from "@/lib/queries";
 import { Card, Panel } from "@/lib/ui";
 import { Donut, CBars, COLORS } from "@/lib/charts";
 
-export default async function RecomendacionPage() {
-  const { origen, calidad, cv } = await getDashRecomendacion();
+export default async function RecomendacionPage({
+  searchParams,
+}: { searchParams: Promise<{ plantel?: string }> }) {
+  const plantel = (await searchParams).plantel ?? "";
+  const { origen, calidad, cv } = await getDashRecomendacion(plantel);
   const totalAsig = origen.reduce((a, x) => a + x.n, 0);
   const conCV = origen.filter((o) => o.origen !== "Solo historial").reduce((a, x) => a + x.n, 0);
   const ORIGEN_COLOR: Record<string, string> = {

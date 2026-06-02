@@ -2,8 +2,11 @@ import { getDashDocentes } from "@/lib/queries";
 import { Card, Panel } from "@/lib/ui";
 import { CBars, HBars, COLORS } from "@/lib/charts";
 
-export default async function DocentesDashPage() {
-  const { resumen, hist, top, sinAsignar } = await getDashDocentes();
+export default async function DocentesDashPage({
+  searchParams,
+}: { searchParams: Promise<{ plantel?: string }> }) {
+  const plantel = (await searchParams).plantel ?? "";
+  const { resumen, hist, top, sinAsignar } = await getDashDocentes(plantel);
   const histData = [
     { rango: "1–3", n: hist.b1, color: COLORS.green },
     { rango: "4–6", n: hist.b2, color: COLORS.blue },
@@ -15,13 +18,13 @@ export default async function DocentesDashPage() {
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Docentes con carga" value={resumen.docentes} />
-        <Card title="Carga promedio" value={resumen.avgc} hint="slots / docente" />
-        <Card title="Carga máxima" value={resumen.maxc} hint="slots" />
-        <Card title="Sobrecargados" value={resumen.sobre} hint=">12 slots" />
+        <Card title="Carga promedio" value={resumen.avgc} hint="materias / docente" />
+        <Card title="Carga máxima" value={resumen.maxc} hint="materias" />
+        <Card title="Sobrecargados" value={resumen.sobre} hint=">12 materias" />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Panel title="Distribución de carga (docentes por rango de slots)">
+        <Panel title="Distribución de carga (docentes por rango de materias)">
           <CBars data={histData} xKey="rango" valueKey="n" />
         </Panel>
         <Panel title="Top 10 más cargados">
@@ -31,7 +34,7 @@ export default async function DocentesDashPage() {
 
       <Panel title={`Docentes sin asignación (${sinAsignar.length})`}>
         {sinAsignar.length === 0 ? (
-          <p className="text-sm text-slate-400">Todos los docentes asignables tienen al menos un slot.</p>
+          <p className="text-sm text-slate-400">Todos los docentes asignables tienen al menos una materia.</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {sinAsignar.map((d) => (

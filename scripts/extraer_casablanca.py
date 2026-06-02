@@ -168,6 +168,58 @@ def main():
             "confirmacion": conf or None,
         })
 
+    # ---- Aulas (catálogo de salones) ----
+    def norm_tipo_aula(t):
+        t = (t or "").strip().lower()
+        if t.startswith("teor"):
+            return "Teoría"
+        if t.startswith("pra") or t.startswith("prá"):
+            return "Práctica"
+        return t.title() if t else None
+
+    def norm_clave_aula(v):
+        if v is None:
+            return None
+        s = str(v).strip()
+        if re.fullmatch(r"\d+\.0", s):  # "104.0" -> "104"
+            s = s[:-2]
+        return s or None
+
+    aulas = []
+    seen_aula = set()
+    if "Aulas" in wb.sheetnames:
+        for r in wb["Aulas"].iter_rows(min_row=2, values_only=True):
+            clave = norm_clave_aula(r[0]) if r and len(r) > 0 else None
+            if not clave or clave in seen_aula:
+                continue
+            seen_aula.add(clave)
+            cap = None
+            if len(r) > 2 and r[2] is not None:
+                try:
+                    cap = int(float(r[2]))
+                except (ValueError, TypeError):
+                    cap = None
+            aulas.append({
+                "clave": clave,
+                "tipo": norm_tipo_aula(r[1]) if len(r) > 1 else None,
+                "capacidad": cap,
+            })
+
+    # ---- Alumnos por grupo (solo grupos de CASA BLANCA) ----
+    alumnos_por_grupo = {}
+    if "ALUMNOS POR MATERIA" in wb.sheetnames:
+        for r in wb["ALUMNOS POR MATERIA"].iter_rows(min_row=2, values_only=True):
+            if not r or r[0] is None:
+                continue
+            clave = str(r[0]).replace("\n", "").strip()
+            if clave not in grupos:  # ignora grupos de otros planteles
+                continue
+            if len(r) > 1 and r[1] is not None:
+                try:
+                    alumnos_por_grupo[clave] = int(float(r[1]))
+                except (ValueError, TypeError):
+                    pass
+
     # top 20 docentes por slots, luego por materias distintas
     rank = sorted(prof_hist.items(), key=lambda kv: (-kv[1]["slots"], -len(kv[1]["materias"])))
     piloto = []
@@ -191,9 +243,13 @@ def main():
             "grupos": len(grupos),
             "docentes_totales": len(prof_hist),
             "docentes_piloto": len(piloto),
+            "aulas": len(aulas),
+            "grupos_con_alumnos": len(alumnos_por_grupo),
         },
         "materias_catalogo": sorted(materias_set.keys()),
         "grupos": list(grupos.values()),
+        "aulas": aulas,
+        "alumnos_por_grupo": alumnos_por_grupo,
         "slots_mayo": slots,
         "docentes_piloto": piloto,
     }

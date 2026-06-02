@@ -11,6 +11,7 @@ const nav = [
   { href: "/", label: "Inicio" },
   { href: "/dashboards", label: "Dashboards" },
   { href: "/profesores", label: "Profesores" },
+  { href: "/aulas", label: "Aulas" },
   { href: "/asignacion", label: "Asignación" },
   { href: "/alertas", label: "Alertas" },
 ];

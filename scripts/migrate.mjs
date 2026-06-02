@@ -1,14 +1,15 @@
 // Corre los .sql de db/migrations en orden contra SUPABASE_DB_URL.
-// Uso: node --env-file=.env.local scripts/migrate.mjs
+// Uso: node scripts/migrate.mjs
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
+import { loadEnv } from "./_env.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const MIG_DIR = join(__dirname, "..", "db", "migrations");
 
-const url = process.env.SUPABASE_DB_URL;
+const url = loadEnv().SUPABASE_DB_URL;
 if (!url) throw new Error("Falta SUPABASE_DB_URL");
 
 const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 15000 });

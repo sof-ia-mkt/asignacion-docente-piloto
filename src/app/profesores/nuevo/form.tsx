@@ -25,17 +25,17 @@ export function NuevoDocenteForm({ materias }: { materias: { id: number; nombre:
           <label className={label}>Años de experiencia *</label>
           <input name="anios_experiencia" required type="number" min="0" className={input} />
         </div>
-        <div>
+        <div className="md:col-span-2">
           <label className={label}>Licenciatura *</label>
           <input name="licenciatura" required className={input} />
         </div>
         <div>
-          <label className={label}>Área de especialidad *</label>
-          <input name="area_cv" required className={input} placeholder="Ej. Enfermería clínica" />
-        </div>
-        <div className="md:col-span-2">
           <label className={label}>Maestría <span className="text-slate-400 font-normal">(opcional)</span></label>
           <input name="maestria" className={input} />
+        </div>
+        <div>
+          <label className={label}>Doctorado <span className="text-slate-400 font-normal">(opcional)</span></label>
+          <input name="doctorado" className={input} />
         </div>
       </div>
 

@@ -18,7 +18,7 @@ export default async function Home() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Slots a asignar" value={r.sep_total} hint="septiembre" />
+        <Card title="Materias por asignar" value={r.sep_total} hint="septiembre" />
         <Card title="Asignados" value={`${r.asignados}`} hint={`${pct}% del total`} />
         <Card title="Sin asignar" value={sinAsignar} hint="requieren revisión" />
         <Card title="Alertas" value={totalAlertas} hint="ver detalle" />
@@ -59,7 +59,7 @@ export default async function Home() {
       </div>
 
       <p className="text-xs text-slate-400">
-        <Sev s="alta" /> indica prioridad. Las sugerencias son automáticas; coordinación confirma o cambia cada slot.
+        <Sev s="alta" /> indica prioridad. Las sugerencias son automáticas; coordinación confirma o cambia cada materia.
       </p>
     </div>
   );

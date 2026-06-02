@@ -10,7 +10,7 @@ export default async function NuevoDocentePage() {
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Nuevo docente</h1>
         <p className="text-sm text-slate-500">
-          Captura sus datos y define qué materias puede dar. Aparecerá como candidato en los slots de esas materias.
+          Captura sus datos y define qué materias puede dar. Aparecerá como candidato en esas materias.
         </p>
       </div>
       <NuevoDocenteForm materias={materias} />

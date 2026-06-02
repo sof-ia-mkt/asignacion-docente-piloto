@@ -3,9 +3,12 @@ import { getDashCobertura, getDashDocentes, getDashRiesgos, getDashRecomendacion
 import { Card, Panel } from "@/lib/ui";
 import { Donut } from "@/lib/charts";
 
-export default async function DashboardsHome() {
+export default async function DashboardsHome({
+  searchParams,
+}: { searchParams: Promise<{ plantel?: string }> }) {
+  const plantel = (await searchParams).plantel ?? "";
   const [cob, doc, rie, rec] = await Promise.all([
-    getDashCobertura(), getDashDocentes(), getDashRiesgos(), getDashRecomendacion(),
+    getDashCobertura(plantel), getDashDocentes(plantel), getDashRiesgos(plantel), getDashRecomendacion(plantel),
   ]);
   const e = cob.estados;
   const sinAsignar = e.total - e.asignados;
@@ -20,12 +23,12 @@ export default async function DashboardsHome() {
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Slots a asignar" value={e.total} hint="septiembre" />
+        <Card title="Materias por asignar" value={e.total} hint="septiembre" />
         <Card title="Cobertura" value={`${pct}%`} hint={`${e.asignados} asignados`} />
         <Card title="Sin asignar" value={sinAsignar} hint="requieren revisión" />
         <Card title="Confirmados" value={e.confirmados} hint={`${e.sugeridos} aún sugeridos`} />
-        <Card title="Docentes con carga" value={doc.resumen.docentes} hint={`promedio ${doc.resumen.avgc} slots`} />
-        <Card title="Sobrecargados" value={doc.resumen.sobre} hint=">12 slots" />
+        <Card title="Docentes con carga" value={doc.resumen.docentes} hint={`promedio ${doc.resumen.avgc} materias`} />
+        <Card title="Sobrecargados" value={doc.resumen.sobre} hint=">12 materias" />
         <Card title="Alertas" value={totalAlertas} hint={`${altas} de prioridad alta`} />
         <Card title="CV procesados" value={rec.cv.procesados} hint={`de ${rec.cv.asignables} docentes`} />
       </div>

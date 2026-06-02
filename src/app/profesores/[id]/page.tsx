@@ -18,7 +18,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
         <dl className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
           <div><dt className="text-slate-500">Licenciatura</dt><dd className="text-slate-800">{prof.licenciatura ?? "—"}</dd></div>
           <div><dt className="text-slate-500">Maestría</dt><dd className="text-slate-800">{prof.maestria ?? "—"}</dd></div>
-          <div><dt className="text-slate-500">Área (CV)</dt><dd className="text-slate-800">{prof.area_cv ?? "—"}</dd></div>
+          <div><dt className="text-slate-500">Doctorado</dt><dd className="text-slate-800">{prof.doctorado ?? "—"}</dd></div>
           <div><dt className="text-slate-500">Experiencia</dt><dd className="text-slate-800">{prof.anios_experiencia ?? "—"} años</dd></div>
         </dl>
         {prof.cv_archivo && (

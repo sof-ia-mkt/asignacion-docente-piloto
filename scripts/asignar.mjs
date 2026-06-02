@@ -43,30 +43,57 @@ for (const arr of porMateria.values()) arr.sort((a, b) => b.puntaje - a.puntaje)
 
 // ---- slots de septiembre ----
 const slots = (await db.query(
-  `select s.id, s.materia_id, s.grupo_id, s.dia, s.hora_inicio, s.hora_fin, s.tipo,
-          m.nombre materia, g.clave grupo
+  `select s.id, s.materia_id, s.grupo_id, s.dia, s.hora_inicio, s.hora_fin, s.tipo, s.modalidad,
+          s.aula_id, s.aula_manual, m.nombre materia, g.clave grupo, g.alumnos
      from slots s
      left join materias m on m.id = s.materia_id
      left join grupos g on g.id = s.grupo_id
     where s.es_historial = false`)).rows
   .map((s) => ({ ...s, ini: toMin(s.hora_inicio), fin: toMin(s.hora_fin) }));
+const slotsById = new Map(slots.map((s) => [s.id, s]));
+
+// ---- catálogo de aulas (Teoría primero, luego por capacidad ascendente: el más chico que alcance) ----
+const tipoRank = (t) => (t === "Teoría" ? 0 : t === "Práctica" ? 1 : 2);
+const aulas = (await db.query(
+  "select id, clave, tipo, capacidad from aulas where capacidad is not null")).rows
+  .sort((a, b) => tipoRank(a.tipo) - tipoRank(b.tipo) || a.capacidad - b.capacidad);
+const CAP_MAX = aulas.length ? Math.max(...aulas.map((a) => a.capacidad)) : 0;
 
 // procesa primero los slots con mejor candidato (las coincidencias más fuertes reclaman docente antes)
 const mejor = (s) => (porMateria.get(s.materia_id)?.[0]?.puntaje ?? -1);
 slots.sort((a, b) => mejor(b) - mejor(a));
 
 // ---- asignación ----
+// Trabajo manual de coordinación (automatica=false): NO se toca. Solo se recalcula lo automático.
+const manualRows = (await db.query(
+  "select slot_id, profesor_id from asignaciones where automatica = false")).rows;
+const manualSlotIds = new Set(manualRows.map((r) => r.slot_id));
+
 await db.query("begin");
 await db.query("delete from alertas");
-await db.query("delete from asignaciones");
+await db.query("delete from asignaciones where automatica = true");
 
 const horario = new Map();      // profesor_id -> [{slot_id, dia, ini, fin}]
 const carga = new Map();        // profesor_id -> nº slots
-const asignados = [];           // {slot, profesor_id, puntaje, razon}
+const asignados = [];           // {slot, profesor_id, puntaje, razon} (solo los AUTOMÁTICOS, los que se insertan)
+const manualAsignados = [];     // {slot, profesor_id} ya en BD; cuentan para carga/choque/repetido
 const alertas = [];
 let sinCand = 0;
 
+// Siembra horario y carga con las asignaciones manuales para que el motor las respete:
+// nadie se programa encima de un docente ya puesto a mano, y su carga ya cuenta.
+for (const r of manualRows) {
+  if (!r.profesor_id) continue;
+  const s = slotsById.get(r.slot_id);
+  if (!s) continue;
+  if (!horario.has(r.profesor_id)) horario.set(r.profesor_id, []);
+  horario.get(r.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin });
+  carga.set(r.profesor_id, (carga.get(r.profesor_id) || 0) + 1);
+  manualAsignados.push({ slot: s, profesor_id: r.profesor_id });
+}
+
 for (const s of slots) {
+  if (manualSlotIds.has(s.id)) continue;   // decisión humana: no la recalcula el motor
   const cands = porMateria.get(s.materia_id) || [];
   if (!cands.length) {
     sinCand++;
@@ -121,7 +148,7 @@ for (const [pid, n] of carga) {
 // docente_repetido: mismo profe cubriendo la misma materia en muchos grupos (sobre-concentración)
 const REPETIDO_GRUPOS = 6;
 const porProfMat = new Map();
-for (const a of asignados) {
+for (const a of [...asignados, ...manualAsignados]) {
   if (!a.profesor_id) continue;
   const k = `${a.profesor_id}|${a.slot.materia_id}`;
   if (!porProfMat.has(k)) porProfMat.set(k, { prof: a.profesor_id, materia: a.slot.materia, grupos: new Set(), slot: a.slot.id });
@@ -134,6 +161,50 @@ for (const v of porProfMat.values()) {
   });
 }
 
+// ---- asignación de aulas (solo presenciales): el salón más chico que alcance y esté libre ----
+// El Excel casi no llena el aula; aquí la plataforma la asigna sola evitando choques.
+const aulaOcc = new Map();      // aula_id -> [{dia, ini, fin}]
+const aulaDe = new Map();       // slot_id -> aula_id
+let sinAula = 0;
+
+// Aulas puestas a mano (aula_manual): se respetan y se marcan como ocupadas para que
+// el auto-acomodo no programe otro grupo encima de ellas.
+for (const s of slots) {
+  if (s.aula_manual && s.aula_id) {
+    if (!aulaOcc.has(s.aula_id)) aulaOcc.set(s.aula_id, []);
+    aulaOcc.get(s.aula_id).push({ dia: s.dia, ini: s.ini, fin: s.fin });
+  }
+}
+
+const presenciales = slots
+  .filter((s) => (s.modalidad || "").toUpperCase() === "PRESENCIAL" && !s.aula_manual)
+  .sort((a, b) => (b.alumnos ?? 0) - (a.alumnos ?? 0));   // grupos grandes reclaman aula primero
+
+for (const s of presenciales) {
+  const al = s.alumnos ?? null;
+  const caben = aulas.filter((a) => al == null || a.capacidad >= al);
+  const libre = caben.find((a) => !(aulaOcc.get(a.id) || []).some((o) => overlap(o, s)));
+  if (libre) {
+    if (!aulaOcc.has(libre.id)) aulaOcc.set(libre.id, []);
+    aulaOcc.get(libre.id).push({ dia: s.dia, ini: s.ini, fin: s.fin });
+    aulaDe.set(s.id, libre.id);
+  } else {
+    sinAula++;
+    const hayCupo = caben.length > 0;
+    alertas.push({
+      tipo: "sin_aula", severidad: hayCupo ? "media" : "alta",
+      slot_id: s.id, slot_id_2: null, profesor_id: null,
+      detalle: hayCupo
+        ? `"${s.materia}" (${s.grupo}) ${s.dia ?? "s/día"} ${s.hora_inicio ?? ""}-${s.hora_fin ?? ""}: no hay salón libre a esa hora (${al ?? "?"} alumnos).`
+        : `"${s.materia}" (${s.grupo}): ningún salón tiene cupo para ${al} alumnos (capacidad máxima ${CAP_MAX}).`,
+    });
+  }
+}
+await db.query("update slots set aula_id = null where es_historial = false and aula_manual = false");
+for (const [sid, aid] of aulaDe) {
+  await db.query("update slots set aula_id = $1 where id = $2", [aid, sid]);
+}
+
 for (const al of alertas) {
   await db.query(
     `insert into alertas (tipo, severidad, slot_id, slot_id_2, profesor_id, detalle)
@@ -144,11 +215,14 @@ for (const al of alertas) {
 await db.query("commit");
 
 // ---- resumen ----
-const asignadosN = asignados.filter((a) => a.profesor_id).length;
+const autoN = asignados.filter((a) => a.profesor_id).length;
+const manualN = manualAsignados.filter((a) => a.profesor_id).length;
 const porTipo = {};
 for (const al of alertas) porTipo[al.tipo] = (porTipo[al.tipo] || 0) + 1;
 console.log(`Slots septiembre:        ${slots.length}`);
-console.log(`  asignados:             ${asignadosN}`);
+console.log(`  asignados (auto):      ${autoN}`);
+console.log(`  asignados (manual):    ${manualN}  (preservados, no recalculados)`);
 console.log(`  sin candidato fuerte:  ${sinCand}`);
+console.log(`Aulas: ${presenciales.length} presenciales auto, ${aulaDe.size} con salón, ${sinAula} sin salón (las manuales se conservan)`);
 console.log(`Alertas: ${alertas.length}  ${JSON.stringify(porTipo)}`);
 await db.end();
