@@ -1,9 +1,28 @@
 import Link from "next/link";
 import { getAlertas, getAlertasResumen, getPlanteles } from "@/lib/queries";
 import { Sev, tipoLabel, plantelCorto } from "@/lib/ui";
+import { recalcularAlertasManual } from "@/app/actions";
 
 // Orden de las tarjetas: lo accionable primero, "Sin aula" al final.
 const TIPOS_ORDEN = ["sin_candidato", "choque_horario", "traslado_plantel", "sobrecarga", "docente_repetido", "sin_aula"];
+
+// Texto que la plataforma muestra para explicar cada tipo de alerta — pensado para
+// que coordinación entienda (y pueda explicar en demo) qué detecta cada una.
+// La clave está en distinguir CHOQUE (el reloj) de TRASLADO (el mapa).
+const EXPLICA: { tipo: string; idea: string; texto: string }[] = [
+  { tipo: "sin_candidato", idea: "Nadie la puede dar",
+    texto: "Ninguna persona del catálogo tiene historial ni CV que respalde esa materia. Hay que buscar docente o revisar el plan." },
+  { tipo: "choque_horario", idea: "El reloj — misma hora",
+    texto: "El mismo docente quedó con dos clases que se enciman en el horario (ej. lunes 10:00–12:00 en dos grupos). No puede estar en dos aulas al mismo tiempo." },
+  { tipo: "traslado_plantel", idea: "El mapa — distinto campus",
+    texto: "El docente tiene dos clases el mismo día, a horas distintas (no se empalman), pero en planteles distintos sin tiempo suficiente para trasladarse (ej. Casa Blanca 10:00 → Tecate 10:30, imposible). Severidad alta = menos de 60 min entre campus." },
+  { tipo: "sobrecarga", idea: "Demasiadas clases",
+    texto: "El docente acumula muchos slots en la semana. Conviene repartir la carga para que sea realista." },
+  { tipo: "docente_repetido", idea: "Concentración en una persona",
+    texto: "Una misma persona quedó asignada a muchos grupos. No es un error, pero conviene revisar si depende demasiado de un solo docente." },
+  { tipo: "sin_aula", idea: "Falta espacio",
+    texto: "La materia tiene docente pero todavía no tiene aula asignada para impartirse." },
+];
 const SEVERIDADES = [
   { v: "alta", label: "Alta" },
   { v: "media", label: "Media" },
@@ -44,13 +63,21 @@ export default async function AlertasPage({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Alertas</h1>
-        <p className="text-sm text-slate-500">
-          {alertas.length} mostradas{tipo ? ` · ${tipoLabel(tipo)}` : ""}
-          {plantel ? ` · ${plantelCorto(plantel)}` : ""}
-          {" · "}{totalScope} en total{plantel ? ` en ${plantelCorto(plantel)}` : ""}.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Alertas</h1>
+          <p className="text-sm text-slate-500">
+            {alertas.length} mostradas{tipo ? ` · ${tipoLabel(tipo)}` : ""}
+            {plantel ? ` · ${plantelCorto(plantel)}` : ""}
+            {" · "}{totalScope} en total{plantel ? ` en ${plantelCorto(plantel)}` : ""}.
+          </p>
+        </div>
+        {/* Las alertas se recalculan solas tras cada edición; este botón es por si quieres forzar el refresco. */}
+        <form action={recalcularAlertasManual}>
+          <button className="shrink-0 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">
+            Recalcular alertas
+          </button>
+        </form>
       </div>
 
       {/* Tarjetas por tipo: clic = ver todas las de ese tipo */}
@@ -70,6 +97,31 @@ export default async function AlertasPage({
           );
         })}
       </div>
+
+      {/* Explicación de cada tipo — colapsable para no estorbar, abierta con un clic en demo. */}
+      <details className="rounded-lg border border-slate-200 bg-white">
+        <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 rounded-lg">
+          ¿Qué significa cada alerta?
+        </summary>
+        <div className="border-t border-slate-100 px-4 py-3 space-y-3">
+          <p className="text-xs text-slate-500">
+            Las alertas no son errores: son focos para revisar antes de cerrar el cuatrimestre.
+            La diferencia más fina es <strong>Choque de horario</strong> (mismo docente, misma hora)
+            frente a <strong>Traslado entre planteles</strong> (mismo docente, horas distintas pero campus distintos sin tiempo de moverse).
+          </p>
+          <dl className="grid md:grid-cols-2 gap-3">
+            {EXPLICA.map((e) => (
+              <div key={e.tipo} className="rounded-md border border-slate-100 bg-slate-50/60 p-3">
+                <dt className="flex items-baseline justify-between gap-2 mb-1">
+                  <span className="text-sm font-medium text-slate-800">{tipoLabel(e.tipo)}</span>
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap">{e.idea}</span>
+                </dt>
+                <dd className="text-xs text-slate-600 leading-relaxed">{e.texto}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </details>
 
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex gap-1 items-center">

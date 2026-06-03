@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getProfesores, getProfesoresConteo } from "@/lib/queries";
-import { plantelCorto } from "@/lib/ui";
+import { plantelCorto, COORDINADORES, esCoordinador } from "@/lib/ui";
 
 const FILTROS = [
   { v: "", label: "Todos" },
@@ -10,11 +10,23 @@ const FILTROS = [
 
 export default async function ProfesoresPage({
   searchParams,
-}: { searchParams: Promise<{ cv?: string }> }) {
-  const cvRaw = (await searchParams).cv ?? "";
+}: { searchParams: Promise<{ cv?: string; coord?: string }> }) {
+  const sp = await searchParams;
+  const cvRaw = sp.cv ?? "";
   const cv = (cvRaw === "cv" || cvRaw === "sincv" ? cvRaw : "") as "" | "cv" | "sincv";
-  const [profes, conteo] = await Promise.all([getProfesores(cv), getProfesoresConteo()]);
+  const coord = esCoordinador(sp.coord ?? "") ? (sp.coord as string) : "";
+  const [profes, conteo] = await Promise.all([getProfesores(cv, coord), getProfesoresConteo()]);
   const sinCv = conteo.total - conteo.con_cv;
+
+  // Construye un href conservando los filtros que no se están cambiando.
+  const href = (next: { cv?: string; coord?: string }) => {
+    const params = new URLSearchParams();
+    const c = next.cv ?? cv, k = next.coord ?? coord;
+    if (c) params.set("cv", c);
+    if (k) params.set("coord", k);
+    const qs = params.toString();
+    return qs ? `/profesores?${qs}` : "/profesores";
+  };
 
   const chip = (activo: boolean) =>
     `px-3 py-1.5 rounded-md text-sm border ${activo ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`;
@@ -34,11 +46,17 @@ export default async function ProfesoresPage({
         </Link>
       </div>
 
-      <div className="flex gap-1 items-center">
+      <div className="flex flex-wrap gap-1 items-center">
         {FILTROS.map((f) => (
-          <Link key={f.v} href={f.v ? `/profesores?cv=${f.v}` : "/profesores"} className={chip(cv === f.v)}>
+          <Link key={f.v} href={href({ cv: f.v })} className={chip(cv === f.v)}>
             {f.label}
           </Link>
+        ))}
+        <span className="mx-2 h-5 w-px bg-slate-200" aria-hidden />
+        <span className="text-xs text-slate-400 mr-1">Coordinación:</span>
+        <Link href={href({ coord: "" })} className={chip(coord === "")}>Todas</Link>
+        {COORDINADORES.map((c) => (
+          <Link key={c} href={href({ coord: c })} className={chip(coord === c)}>{c}</Link>
         ))}
       </div>
 
@@ -47,6 +65,7 @@ export default async function ProfesoresPage({
           <thead className="bg-slate-50 text-slate-600">
             <tr className="text-left">
               <th className="px-4 py-2 font-medium">Docente</th>
+              <th className="px-4 py-2 font-medium">Coordinación</th>
               <th className="px-4 py-2 font-medium">CV</th>
               <th className="px-4 py-2 font-medium">Plantel(es)</th>
               <th className="px-4 py-2 font-medium">Licenciatura</th>
@@ -62,6 +81,9 @@ export default async function ProfesoresPage({
                   <Link href={`/profesores/${p.id}`} className="text-blue-700 hover:underline font-medium">
                     {p.nombre}
                   </Link>
+                </td>
+                <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                  {p.coordinador ?? <span className="text-amber-700 text-xs">sin asignar</span>}
                 </td>
                 <td className="px-4 py-2">
                   {p.tiene_cv ? (
@@ -82,7 +104,7 @@ export default async function ProfesoresPage({
               </tr>
             ))}
             {profes.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-400">Sin docentes con este filtro.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-400">Sin docentes con este filtro.</td></tr>
             )}
           </tbody>
         </table>

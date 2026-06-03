@@ -12,21 +12,21 @@
 // coordinación decida.
 import pg from "pg";
 import { loadEnv } from "./_env.mjs";
+import { recomputarAlertas } from "../src/lib/alertas-core.mjs";
 
 const env = loadEnv();
 const SCORE_MIN = 25;          // umbral opción A (historial 40, cv-alta 25)
-const SOBRECARGA_SLOTS = 12;   // > este número de slots (~24h/sem) => alerta de sobrecarga
 const PLANTEL_BONUS = 20;      // dio la materia EN ESTE plantel => +20 (se prefiere el fit local)
-const TRASLADO_MIN = 60;       // < este margen entre 2 planteles el mismo día => traslado imposible
+// (Los umbrales de sobrecarga, traslado, etc. viven en el módulo de alertas: ahí se diagnostica.)
 // "Docentes" que en realidad son notas del Excel, no personas: no son asignables.
 const PLACEHOLDERS = ["CAMBIO DE TURNO", "DOCENTE NUEVO", "NO SE APERTURA", "NOSE APERTURA"];
 
 const db = new pg.Client({ connectionString: env.SUPABASE_DB_URL, connectionTimeoutMillis: 15000 });
 await db.connect();
+// Adaptador para el módulo de alertas compartido: corre sobre ESTE cliente (misma transacción).
+const query = async (sql, params = []) => (await db.query(sql, params)).rows;
 
 const toMin = (h) => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + b; };
-// "JACOBO UGALDE TYRON DALED" -> "Jacobo Ugalde Tyron Daled" (respeta acentos).
-const nombreCorto = (n) => (n ?? "").toLowerCase().replace(/(^|\s)(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
 const overlap = (a, b) =>
   a.dia && b.dia && a.dia === b.dia && a.ini != null && b.ini != null && a.ini < b.fin && b.ini < a.fin;
 
@@ -88,14 +88,12 @@ const manualRows = (await db.query(
 const manualSlotIds = new Set(manualRows.map((r) => r.slot_id));
 
 await db.query("begin");
-await db.query("delete from alertas");
-await db.query("delete from asignaciones where automatica = true");
+await db.query("delete from asignaciones where automatica = true");  // las alertas las reescribe recomputarAlertas al final
 
 const horario = new Map();      // profesor_id -> [{slot_id, dia, ini, fin}]
 const carga = new Map();        // profesor_id -> nº slots
 const asignados = [];           // {slot, profesor_id, puntaje, razon} (solo los AUTOMÁTICOS, los que se insertan)
 const manualAsignados = [];     // {slot, profesor_id} ya en BD; cuentan para carga/choque/repetido
-const alertas = [];
 let sinCand = 0;
 
 // Siembra horario y carga con las asignaciones manuales para que el motor las respete:
@@ -116,10 +114,6 @@ for (const s of slots) {
   if (!cands.length) {
     sinCand++;
     asignados.push({ slot: s, profesor_id: null });
-    alertas.push({
-      tipo: "sin_candidato", severidad: "alta", slot_id: s.id, slot_id_2: null, profesor_id: null,
-      detalle: `Nadie en el sistema puede dar "${s.materia}" (${s.grupo ?? "sin grupo"}). Hay que buscar o contratar a un docente para esta clase.`,
-    });
     continue;
   }
 
@@ -132,15 +126,9 @@ for (const s of slots) {
   const elegido = ordenados.find((c) => !(horario.get(c.profesor_id) || []).some((h) => overlap(h, s)));
 
   if (!elegido) {
-    // Todos los candidatos fuertes ya están ocupados a esa hora -> choque sin resolver.
-    const top = ordenados[0];
-    const conf = (horario.get(top.profesor_id) || []).find((h) => overlap(h, s));
-    const sc = slots.find((x) => x.id === conf.slot_id);
+    // Todos los candidatos fuertes ya están ocupados a esa hora -> queda sin maestro.
+    // El diagnóstico (la alerta de choque) lo levanta el módulo compartido al final.
     asignados.push({ slot: s, profesor_id: null });
-    alertas.push({
-      tipo: "choque_horario", severidad: "alta", slot_id: s.id, slot_id_2: sc.id, profesor_id: top.profesor_id,
-      detalle: `"${s.materia}" (${s.grupo}), ${s.dia} ${s.hora_inicio}-${s.hora_fin}: quedó sin maestro. El mejor candidato (${nombreCorto(top.nombre)}) ya da "${sc.materia}" a esa misma hora, así que no puede tomar las dos. Elige otro docente disponible o cambia el horario de una de las clases.`,
-    });
     continue;
   }
 
@@ -166,59 +154,9 @@ for (const a of asignados) {
      a.puntaje ?? null, a.razon ?? null]);
 }
 
-// sobrecarga: profe con demasiados slots
-for (const [pid, n] of carga) {
-  if (n > SOBRECARGA_SLOTS) alertas.push({
-    tipo: "sobrecarga", severidad: n > SOBRECARGA_SLOTS * 1.5 ? "alta" : "media",
-    slot_id: null, slot_id_2: null, profesor_id: pid,
-    detalle: `Tiene ${n} clases asignadas en septiembre; lo recomendable es máximo ${SOBRECARGA_SLOTS}. Puede estar sobrecargado: considera pasar algunas a otro docente.`,
-  });
-}
-
-// docente_repetido: mismo profe cubriendo la misma materia en muchos grupos (sobre-concentración)
-const REPETIDO_GRUPOS = 6;
-const porProfMat = new Map();
-for (const a of [...asignados, ...manualAsignados]) {
-  if (!a.profesor_id) continue;
-  const k = `${a.profesor_id}|${a.slot.materia_id}`;
-  if (!porProfMat.has(k)) porProfMat.set(k, { prof: a.profesor_id, materia: a.slot.materia, grupos: new Set(), slot: a.slot.id });
-  porProfMat.get(k).grupos.add(a.slot.grupo_id);
-}
-for (const v of porProfMat.values()) {
-  if (v.grupos.size >= REPETIDO_GRUPOS) alertas.push({
-    tipo: "docente_repetido", severidad: "media", slot_id: v.slot, slot_id_2: null, profesor_id: v.prof,
-    detalle: `Da "${v.materia}" en ${v.grupos.size} grupos distintos. Está muy concentrado en una sola materia; conviene repartir algunos grupos con otro docente.`,
-  });
-}
-
-// traslado_plantel: un docente con clases en 2+ planteles el MISMO día.
-// Si el margen entre campus es < TRASLADO_MIN minutos (o se traslapan) => imposible (alta); si no, aviso (media).
-const porProfDia = new Map();   // `${pid}|${dia}` -> [{plantel, ini, fin, slot_id}]
-for (const a of [...asignados, ...manualAsignados]) {
-  if (!a.profesor_id || !a.slot.dia) continue;
-  const k = `${a.profesor_id}|${a.slot.dia}`;
-  if (!porProfDia.has(k)) porProfDia.set(k, []);
-  porProfDia.get(k).push({ plantel: a.slot.plantel, ini: a.slot.ini, fin: a.slot.fin, slot_id: a.slot.id });
-}
-for (const [k, clases] of porProfDia) {
-  const planteles = [...new Set(clases.map((c) => c.plantel).filter(Boolean))];
-  if (planteles.length < 2) continue;
-  const [pid, dia] = k.split("|");
-  let margenMin = Infinity;   // minutos libres entre dos clases de planteles distintos
-  for (let i = 0; i < clases.length; i++) for (let j = i + 1; j < clases.length; j++) {
-    const a = clases[i], b = clases[j];
-    if (a.plantel === b.plantel || a.ini == null || a.fin == null || b.ini == null || b.fin == null) continue;
-    margenMin = Math.min(margenMin, a.ini <= b.ini ? b.ini - a.fin : a.ini - b.fin);
-  }
-  const imposible = margenMin < TRASLADO_MIN;
-  alertas.push({
-    tipo: "traslado_plantel", severidad: imposible ? "alta" : "media",
-    slot_id: clases[clases.length - 1].slot_id, slot_id_2: null, profesor_id: Number(pid),
-    detalle: imposible
-      ? `El ${dia} tiene clases en ${planteles.join(" y ")} con solo ${margenMin === Infinity ? "?" : margenMin} min entre una y otra: no le alcanza para trasladarse. Hay que mover una clase o cambiar de docente.`
-      : `El ${dia} da clases en ${planteles.join(" y ")} el mismo día. Revisa que le dé tiempo de trasladarse entre planteles.`,
-  });
-}
+// Las alertas (sobrecarga, docente_repetido, traslado_plantel, choque, sin_candidato, sin_aula)
+// ya NO se calculan aquí: son un DIAGNÓSTICO del estado y las levanta el módulo compartido
+// (src/lib/alertas-core.mjs) al final, una vez asignados docentes y aulas. Fuente de verdad única.
 
 // ---- asignación de aulas (solo presenciales): el salón más chico que alcance y esté libre ----
 // El Excel casi no llena el aula; aquí la plataforma la asigna sola evitando choques.
@@ -248,15 +186,7 @@ for (const s of presenciales) {
     aulaOcc.get(libre.id).push({ dia: s.dia, ini: s.ini, fin: s.fin });
     aulaDe.set(s.id, libre.id);
   } else {
-    sinAula++;
-    const hayCupo = caben.length > 0;
-    alertas.push({
-      tipo: "sin_aula", severidad: hayCupo ? "media" : "alta",
-      slot_id: s.id, slot_id_2: null, profesor_id: null,
-      detalle: hayCupo
-        ? `"${s.materia}" (${s.grupo}), ${s.dia ?? "sin día"} ${s.hora_inicio ?? ""}-${s.hora_fin ?? ""}: no hay salón libre a esa hora para ${al ?? "?"} alumnos. Cambia el horario o libera un aula.`
-        : `"${s.materia}" (${s.grupo}): ningún salón alcanza para ${al} alumnos (el más grande es de ${CAP_MAX}). Hay que dividir el grupo o conseguir un espacio mayor.`,
-    });
+    sinAula++;   // solo para el resumen; la alerta sin_aula la levanta el módulo compartido
   }
 }
 await db.query("update slots set aula_id = null where es_historial = false and aula_manual = false");
@@ -264,24 +194,18 @@ for (const [sid, aid] of aulaDe) {
   await db.query("update slots set aula_id = $1 where id = $2", [aid, sid]);
 }
 
-for (const al of alertas) {
-  await db.query(
-    `insert into alertas (tipo, severidad, slot_id, slot_id_2, profesor_id, detalle)
-     values ($1,$2,$3,$4,$5,$6)`,
-    [al.tipo, al.severidad, al.slot_id, al.slot_id_2, al.profesor_id, al.detalle]);
-}
+// ---- alertas: una sola fuente de verdad, sobre el estado ya escrito (docentes + aulas) ----
+const { total: alertasTotal, porTipo } = await recomputarAlertas(query);
 
 await db.query("commit");
 
 // ---- resumen ----
 const autoN = asignados.filter((a) => a.profesor_id).length;
 const manualN = manualAsignados.filter((a) => a.profesor_id).length;
-const porTipo = {};
-for (const al of alertas) porTipo[al.tipo] = (porTipo[al.tipo] || 0) + 1;
 console.log(`Slots septiembre:        ${slots.length}`);
 console.log(`  asignados (auto):      ${autoN}`);
 console.log(`  asignados (manual):    ${manualN}  (preservados, no recalculados)`);
 console.log(`  sin candidato fuerte:  ${sinCand}`);
 console.log(`Aulas: ${presenciales.length} presenciales auto, ${aulaDe.size} con salón, ${sinAula} sin salón (las manuales se conservan)`);
-console.log(`Alertas: ${alertas.length}  ${JSON.stringify(porTipo)}`);
+console.log(`Alertas: ${alertasTotal}  ${JSON.stringify(porTipo)}`);
 await db.end();

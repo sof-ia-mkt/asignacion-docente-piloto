@@ -1,5 +1,12 @@
 // Componentes visuales compartidos (server-safe, sin estado de cliente).
 
+// Coordinadores(as) académicos que pueden asignar docentes. Lista única usada por
+// formularios, acciones (validación) y filtros. Editar aquí para cambiar el catálogo.
+export const COORDINADORES = ["Ammy", "Daniel", "Brenda"] as const;
+export type Coordinador = (typeof COORDINADORES)[number];
+export const esCoordinador = (v: string): v is Coordinador =>
+  (COORDINADORES as readonly string[]).includes(v);
+
 const SEV: Record<string, string> = {
   alta: "bg-red-100 text-red-800 border-red-200",
   media: "bg-amber-100 text-amber-800 border-amber-200",

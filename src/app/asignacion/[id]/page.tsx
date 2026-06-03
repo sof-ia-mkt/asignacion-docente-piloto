@@ -20,9 +20,23 @@ export default async function SlotPage({
   const data = await getSlot(slotId);
   if (!data) notFound();
   const { slot, candidatos, aulas } = data;
-  const manuales = await buscarProfesores(buscar, slot.materia_id);
+  const manuales = await buscarProfesores(
+    buscar, slot.materia_id, slotId, slot.dia, slot.hora_inicio, slot.hora_fin);
   const esPresencial = (slot.modalidad ?? "").toUpperCase() === "PRESENCIAL";
   const aulaChica = slot.aula_capacidad != null && slot.alumnos != null && slot.aula_capacidad < slot.alumnos;
+  // Sin día/hora no podemos evaluar choques de horario del docente (no hay con qué comparar).
+  const sinHorario = !slot.dia || !slot.hora_inicio || !slot.hora_fin;
+
+  // Celda de disponibilidad del docente a la hora de ESTA clase: libre / choca / sin horario.
+  const dispCell = (choque: string | null) => {
+    if (sinHorario) return <span className="text-xs text-slate-400">sin horario</span>;
+    if (choque) return (
+      <span className="text-xs font-medium text-red-700" title={`Ya tiene "${choque}" a esta misma hora — lo empalmarías`}>
+        choca · {choque}
+      </span>
+    );
+    return <span className="text-xs text-green-700">libre</span>;
+  };
 
   return (
     <div className="space-y-5">
@@ -183,12 +197,13 @@ export default async function SlotPage({
                 <th className="py-1 font-medium">Fuente</th>
                 <th className="py-1 font-medium text-right">Puntaje</th>
                 <th className="py-1 font-medium text-right">Carga</th>
+                <th className="py-1 font-medium">Disponibilidad</th>
                 <th className="py-1"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {candidatos.map((c) => (
-                <tr key={c.profesor_id} className={slot.docente_id === c.profesor_id ? "bg-blue-50" : ""}>
+                <tr key={c.profesor_id} className={slot.docente_id === c.profesor_id ? "bg-blue-50" : c.choque ? "bg-red-50/40" : ""}>
                   <td className="py-1.5 pr-2">
                     <Link href={`/profesores/${c.profesor_id}`} className="text-blue-700 hover:underline">{c.nombre}</Link>
                   </td>
@@ -198,6 +213,7 @@ export default async function SlotPage({
                   <td className="py-1.5 pr-2 text-slate-600">{c.fuentes}</td>
                   <td className="py-1.5 pr-2 text-right font-medium">{c.puntaje}</td>
                   <td className="py-1.5 pr-2 text-right text-slate-600">{c.carga}</td>
+                  <td className="py-1.5 pr-2">{dispCell(c.choque)}</td>
                   <td className="py-1.5 text-right">
                     {slot.docente_id === c.profesor_id ? (
                       <span className="text-xs text-slate-400">asignado</span>
@@ -213,7 +229,8 @@ export default async function SlotPage({
           </table>
         )}
         <p className="mt-3 text-xs text-slate-400">
-          La carga es el número de materias ya asignadas a ese docente en septiembre. Evita asignar a alguien sobrecargado o con choque de horario.
+          La carga es el número de materias ya asignadas a ese docente en septiembre.
+          {" "}<span className="text-green-700">Libre</span> / <span className="text-red-700">choca</span> indica si ya tiene otra clase a esta misma hora{sinHorario ? " (esta clase aún no tiene horario, por eso no se puede evaluar)" : ""}. Un choque no lo bloquea, pero evita empalmar.
         </p>
       </div>
 
@@ -242,18 +259,20 @@ export default async function SlotPage({
                   <th className="py-1 font-medium">Docente</th>
                   <th className="py-1 font-medium">Área</th>
                   <th className="py-1 font-medium text-right">Carga</th>
+                  <th className="py-1 font-medium">Disponibilidad</th>
                   <th className="py-1"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {manuales.map((p) => (
-                  <tr key={p.id} className={slot.docente_id === p.id ? "bg-blue-50" : ""}>
+                  <tr key={p.id} className={slot.docente_id === p.id ? "bg-blue-50" : p.choque ? "bg-red-50/40" : ""}>
                     <td className="py-1.5 pr-2">
                       <Link href={`/profesores/${p.id}`} className="text-blue-700 hover:underline">{p.nombre}</Link>
                       {p.recomendado && <span className="ml-2 text-xs text-slate-400">(ya recomendado)</span>}
                     </td>
                     <td className="py-1.5 pr-2 text-slate-600">{p.area_cv ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-right text-slate-600">{p.carga}</td>
+                    <td className="py-1.5 pr-2">{dispCell(p.choque)}</td>
                     <td className="py-1.5 text-right">
                       {slot.docente_id === p.id ? (
                         <span className="text-xs text-slate-400">asignado</span>

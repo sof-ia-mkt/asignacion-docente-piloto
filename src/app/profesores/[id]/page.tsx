@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProfesor } from "@/lib/queries";
-import { Estado, TipoClase, plantelCorto, PlantelBadge } from "@/lib/ui";
+import { Estado, TipoClase, plantelCorto } from "@/lib/ui";
 import { quitarAsignacion, eliminarDocente } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 
@@ -11,26 +11,41 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
   if (!data) notFound();
   const { prof, candidatas, asignaciones, historial } = data;
 
-  // Para distinguir, en la recomendación, lo que YA da de lo que todavía es una oportunidad.
+  // Para distinguir lo que YA da de lo que todavía es una oportunidad.
   const yaAsignadas = new Set(asignaciones.map((a) => a.materia));
-  // En qué plantel(es) dio cada materia (sale de su historial de mayo).
-  const plantelesPorMateria = new Map<string, string[]>();
-  for (const h of historial) {
-    if (!h.plantel) continue;
-    const arr = plantelesPorMateria.get(h.materia) ?? [];
-    if (!arr.includes(h.plantel)) arr.push(h.plantel);
-    plantelesPorMateria.set(h.materia, arr);
+  // Una misma materia puede venir por historial Y por CV: nos quedamos con la señal más fuerte
+  // (mayor puntaje) para no repetirla y para clasificarla en el nivel correcto.
+  const porMateria = new Map<number, (typeof candidatas)[number]>();
+  for (const c of candidatas) {
+    const prev = porMateria.get(c.materia_id);
+    if (!prev || c.puntaje > prev.puntaje) porMateria.set(c.materia_id, c);
   }
-  const recomendadas = [...candidatas]
+  const todas = [...porMateria.values()]
     .map((c) => ({ ...c, yaLaDa: yaAsignadas.has(c.materia) }))
-    .sort((a, b) => Number(a.yaLaDa) - Number(b.yaLaDa)); // disponibles (oportunidades) primero
-  const disponibles = recomendadas.filter((c) => !c.yaLaDa).length;
+    .sort((a, b) => Number(a.yaLaDa) - Number(b.yaLaDa) || b.puntaje - a.puntaje);
+  // Tres niveles de señal: ya la impartió (40, hecho) · CV fuerte (25) · afinidad débil (15/8, se colapsa).
+  const impartio = todas.filter((c) => c.puntaje >= 40);
+  const cvFuerte = todas.filter((c) => c.puntaje >= 25 && c.puntaje < 40);
+  const afinidad = todas.filter((c) => c.puntaje < 25);
+  const disponibles = todas.filter((c) => !c.yaLaDa).length;
 
   const stat = (n: number, label: string, color: string) => (
     <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
       <div className={`text-2xl font-semibold ${n === 0 ? "text-slate-300" : color}`}>{n}</div>
       <div className="text-xs text-slate-500">{label}</div>
     </div>
+  );
+
+  // Cada materia recomendada como una "pastilla" compacta. ✓ = ya la tiene asignada (atenuada);
+  // disponible = blanca. El detalle (razón + puntaje) va en el tooltip para no llenar de texto.
+  const chipReco = (c: (typeof todas)[number]) => (
+    <span key={c.materia_id} title={`${c.razon ? c.razon + " · " : ""}puntaje ${c.puntaje}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm border ${
+        c.yaLaDa ? "bg-slate-100 text-slate-400 border-slate-200"
+                 : "bg-white text-slate-700 border-slate-300"}`}>
+      {c.yaLaDa && <span className="text-green-600 text-xs">✓</span>}
+      {c.materia}
+    </span>
   );
 
   return (
@@ -41,10 +56,21 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-xl font-semibold text-slate-900">{prof.nombre}</h1>
-          <span className="shrink-0 text-xs text-slate-400 mt-1">
-            {prof.anios_experiencia != null ? `${prof.anios_experiencia} años de experiencia` : "Experiencia s/d"}
-          </span>
+          <div className="flex items-center gap-3 shrink-0 mt-1">
+            <span className="text-xs text-slate-400">
+              {prof.anios_experiencia != null ? `${prof.anios_experiencia} años de experiencia` : "Experiencia s/d"}
+            </span>
+            <Link href={`/profesores/${prof.id}/editar`} className="text-xs text-blue-700 hover:underline whitespace-nowrap">
+              Editar
+            </Link>
+          </div>
         </div>
+        <p className="mt-2 text-sm text-slate-600">
+          Coordinación académica:{" "}
+          {prof.coordinador
+            ? <span className="font-medium text-slate-800">{prof.coordinador}</span>
+            : <span className="text-amber-700">sin asignar</span>}
+        </p>
         <dl className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
           <div><dt className="text-slate-500">Licenciatura</dt><dd className="text-slate-800">{prof.licenciatura ?? "—"}</dd></div>
           <div><dt className="text-slate-500">Maestría</dt><dd className="text-slate-800">{prof.maestria ?? "—"}</dd></div>
@@ -148,60 +174,50 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
         )}
       </div>
 
-      {/* Recomendación del sistema: plegable para no estorbar */}
-      <details className="rounded-lg border border-slate-200 bg-white">
-        <summary className="cursor-pointer select-none p-4 text-sm font-medium text-slate-700">
-          Materias que el sistema le recomienda
-          <span className="ml-2 text-xs font-normal text-slate-400">
-            ({candidatas.length}){disponibles > 0 ? ` · ${disponibles} disponible${disponibles === 1 ? "" : "s"} para asignar` : ""} — clic para ver
-          </span>
-        </summary>
-        <div className="px-4 pb-4">
-          {recomendadas.length === 0 ? (
-            <p className="text-sm text-slate-400">Sin recomendaciones.</p>
-          ) : (
-            <>
-              <p className="mb-3 text-xs text-slate-400">
-                &quot;Disponible&quot; = podría darla pero aún no se le asignó · &quot;Ya la da&quot; = ya está en sus clases de septiembre.
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-slate-500 text-left">
-                    <tr>
-                      <th className="py-1 font-medium">Materia</th>
-                      <th className="py-1 font-medium">Estado</th>
-                      <th className="py-1 font-medium">Dónde la dio</th>
-                      <th className="py-1 font-medium">Fuente</th>
-                      <th className="py-1 font-medium text-right">Puntaje</th>
-                      <th className="py-1 font-medium">Razón</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {recomendadas.map((c, i) => (
-                      <tr key={i}>
-                        <td className="py-1.5 pr-2 text-slate-800">{c.materia}</td>
-                        <td className="py-1.5 pr-2">
-                          {c.yaLaDa ? (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-100 text-slate-500 border-slate-200">Ya la da</span>
-                          ) : (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-green-100 text-green-800 border-green-200">Disponible</span>
-                          )}
-                        </td>
-                        <td className="py-1.5 pr-2">
-                          <PlantelBadge planteles={plantelesPorMateria.get(c.materia) ?? []} />
-                        </td>
-                        <td className="py-1.5 pr-2 text-slate-600">{c.fuente}</td>
-                        <td className="py-1.5 pr-2 text-right font-medium">{c.puntaje}</td>
-                        <td className="py-1.5 text-slate-500">{c.razon}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
+      {/* Materias que puede dar: por niveles de señal, en pastillas compactas (no una tabla infinita).
+          Lo fuerte (impartió + CV fuerte) se ve de entrada; la afinidad débil se colapsa. */}
+      <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
+        <div>
+          <h2 className="text-sm font-medium text-slate-700">Materias que puede dar</h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Ordenadas por qué tan fuerte es la señal{disponibles > 0 ? ` · ${disponibles} disponible${disponibles === 1 ? "" : "s"} para asignar` : ""}.
+            {" "}<span className="text-green-600">✓</span> = ya la tiene asignada en septiembre · pasa el cursor sobre cada una para ver la razón.
+          </p>
         </div>
-      </details>
+
+        {todas.length === 0 ? (
+          <p className="text-sm text-slate-400">Sin recomendaciones.</p>
+        ) : (
+          <>
+            {impartio.length > 0 && (
+              <div>
+                <div className="mb-2 text-xs font-medium text-slate-500">
+                  Ya las impartió <span className="font-normal text-slate-400">({impartio.length}) · la señal más fuerte</span>
+                </div>
+                <div className="flex flex-wrap gap-2">{impartio.map(chipReco)}</div>
+              </div>
+            )}
+
+            {cvFuerte.length > 0 && (
+              <div>
+                <div className="mb-2 text-xs font-medium text-slate-500">
+                  Sugeridas por su CV <span className="font-normal text-slate-400">({cvFuerte.length}) · buena afinidad</span>
+                </div>
+                <div className="flex flex-wrap gap-2">{cvFuerte.map(chipReco)}</div>
+              </div>
+            )}
+
+            {afinidad.length > 0 && (
+              <details>
+                <summary className="cursor-pointer select-none text-xs font-medium text-slate-500 hover:text-slate-700">
+                  Otras posibles por afinidad <span className="font-normal text-slate-400">({afinidad.length}) · señal débil — clic para ver</span>
+                </summary>
+                <div className="mt-2 flex flex-wrap gap-2">{afinidad.map(chipReco)}</div>
+              </details>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Borrar docente: acción destructiva, separada y con aviso de lo que implica. */}
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">

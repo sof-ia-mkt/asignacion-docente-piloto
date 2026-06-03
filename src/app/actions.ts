@@ -5,6 +5,33 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { q, pool } from "@/lib/db";
 import { leerCV } from "@/lib/cv";
+import { esCoordinador } from "@/lib/ui";
+import { recomputarAlertas } from "@/lib/alertas-core.mjs";
+
+// Recalcula las alertas desde el ESTADO ACTUAL (diagnóstico; NO reasigna docentes ni aulas).
+// Misma fuente de verdad que el motor (src/lib/alertas-core.mjs). Se llama tras cada edición
+// para que el panel de alertas nunca quede como una foto vieja. Va en su propia transacción.
+async function recalcularAlertas() {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await recomputarAlertas((sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows));
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+// Botón "Recalcular alertas" del panel: rehace el diagnóstico a mano, sin tocar asignaciones.
+export async function recalcularAlertasManual() {
+  await recalcularAlertas();
+  revalidatePath("/alertas");
+  revalidatePath("/");
+}
 
 const slugify = (s: string) =>
   s.normalize("NFKD").replace(/[̀-ͯ]/g, "")
@@ -19,10 +46,13 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
   const aniosRaw = String(fd.get("anios_experiencia") ?? "").trim();
   const maestria = String(fd.get("maestria") ?? "").trim() || null;
   const doctorado = String(fd.get("doctorado") ?? "").trim() || null;
+  const coordinador = String(fd.get("coordinador") ?? "").trim();
   const camino = String(fd.get("camino") ?? "");
 
   if (!nombre || !licenciatura || !aniosRaw)
     return { error: "Faltan campos obligatorios: nombre, licenciatura y años de experiencia." };
+  if (!coordinador) return { error: "Indica qué coordinador(a) académico lo va a asignar." };
+  if (!esCoordinador(coordinador)) return { error: "Coordinador(a) no válido." };
   const anios = Number(aniosRaw);
   if (!Number.isFinite(anios) || anios < 0) return { error: "Años de experiencia debe ser un número válido." };
   if (camino !== "manual" && camino !== "cv") return { error: "Elige cómo definir sus materias: manual o por CV." };
@@ -55,10 +85,10 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
       return { error: `No se pudo leer el CV: ${e instanceof Error ? e.message : "error desconocido"}` };
     }
     const [prof] = await q<{ id: number }>(
-      `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, area_cv, anios_experiencia, cv_archivo)
-       values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+      `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, area_cv, anios_experiencia, cv_archivo, coordinador)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
       [nombre, slug, res.perfil.licenciatura || licenciatura, res.perfil.maestria ?? maestria,
-       doctorado, res.perfil.area_principal ?? null, res.perfil.anios_experiencia ?? anios, `${slug}.pdf`]);
+       doctorado, res.perfil.area_principal ?? null, res.perfil.anios_experiencia ?? anios, `${slug}.pdf`, coordinador]);
     profesorId = prof.id;
     await q(`insert into cv_competencias (profesor_id, payload, modelo) values ($1,$2,$3)`,
       [profesorId, res.perfil, res.modelo]);
@@ -71,9 +101,9 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
     }
   } else {
     const [prof] = await q<{ id: number }>(
-      `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, anios_experiencia)
-       values ($1,$2,$3,$4,$5,$6) returning id`,
-      [nombre, slug, licenciatura, maestria, doctorado, anios]);
+      `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, anios_experiencia, coordinador)
+       values ($1,$2,$3,$4,$5,$6,$7) returning id`,
+      [nombre, slug, licenciatura, maestria, doctorado, anios, coordinador]);
     profesorId = prof.id;
     // Materias ya impartidas = señal más fuerte (+40), igual que el historial de mayo.
     for (const mid of materiaIds) {
@@ -85,7 +115,9 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
     }
   }
 
+  await recalcularAlertas();   // sus nuevas candidaturas pueden resolver un "sin_candidato" existente
   revalidatePath("/profesores");
+  revalidatePath("/alertas");
   revalidatePath("/");
   redirect(`/profesores/${profesorId}`);
 }
@@ -102,12 +134,15 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
            razon = excluded.razon,
            automatica = false`,
     [slotId, profesorId, puntaje ?? null, razon ?? null]);
+  await recalcularAlertas();   // poner a un docente puede resolver un choque/sin_candidato o crear sobrecarga
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
+  revalidatePath("/alertas");
   revalidatePath("/");
 }
 
 // Confirma la sugerencia automática tal cual (la "acepta" coordinación).
+// Solo cambia el estado (sugerida→confirmada), no el docente, así que el diagnóstico no cambia.
 export async function confirmar(slotId: number) {
   await q("update asignaciones set estado='confirmada', automatica=false where slot_id=$1", [slotId]);
   revalidatePath(`/asignacion/${slotId}`);
@@ -115,37 +150,38 @@ export async function confirmar(slotId: number) {
   revalidatePath("/");
 }
 
-// Asigna un aula al slot. Si ese salón ya está ocupado a esa hora, levanta alerta de choque (pero asigna igual).
+// Confirma EN LOTE todas las sugerencias automáticas que aún no se revisan (estado 'sugerida',
+// con docente), opcionalmente acotado a un plantel. Es la forma rápida de "aceptar lo que propuso
+// el sistema" sin abrir clase por clase. No cambia el docente, sólo el estado → no toca las alertas.
+export async function confirmarSugeridas(plantel?: string) {
+  const params: unknown[] = [];
+  let scope = "";
+  if (plantel) {
+    params.push(plantel);
+    scope = ` and slot_id in (select id from slots where es_historial = false and plantel = $${params.length})`;
+  }
+  await q(
+    `update asignaciones set estado = 'confirmada', automatica = false
+      where estado = 'sugerida' and profesor_id is not null${scope}`, params);
+  revalidatePath("/asignacion");
+  revalidatePath("/");
+}
+
+// Asigna un aula al slot. Si ese salón queda ocupado a esa hora por otra clase,
+// el recálculo levanta la alerta choque_aula (pero el aula se asigna igual: lo decide coordinación).
 export async function asignarAula(slotId: number, aulaId: number) {
   // aula_manual = true: el motor (asignar.mjs) ya no recalcula ni pisa este salón.
   await q("update slots set aula_id = $1, aula_manual = true where id = $2", [aulaId, slotId]);
-  const clash = await q<{ id: number; materia: string | null; grupo: string | null }>(
-    `select s2.id, m.nombre materia, g.clave grupo
-       from slots s2
-       join slots s on s.id = $1
-       left join materias m on m.id = s2.materia_id
-       left join grupos g on g.id = s2.grupo_id
-      where s2.es_historial = false and s2.aula_id = $2 and s2.id <> $1
-        and s2.dia = s.dia and s2.hora_inicio < s.hora_fin and s.hora_inicio < s2.hora_fin`,
-    [slotId, aulaId]);
-  await q("delete from alertas where tipo = 'choque_aula' and slot_id = $1", [slotId]);
-  if (clash.length) {
-    const c = clash[0];
-    const [au] = await q<{ clave: string }>("select clave from aulas where id = $1", [aulaId]);
-    await q(
-      `insert into alertas (tipo, severidad, slot_id, slot_id_2, detalle)
-       values ('choque_aula','alta',$1,$2,$3)`,
-      [slotId, c.id, `Aula ${au?.clave ?? ""} ya ocupada a esa hora por "${c.materia ?? "?"}" (${c.grupo ?? "?"}).`]);
-  }
+  await recalcularAlertas();   // detecta choque_aula y quita sin_aula de este slot, sobre el estado actual
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
   revalidatePath("/alertas");
 }
 
-// Quita el aula del slot (lo deja sin salón) y limpia su alerta de choque.
+// Quita el aula del slot (lo deja sin salón). El recálculo limpia el choque y, si es presencial, levanta sin_aula.
 export async function quitarAula(slotId: number) {
   await q("update slots set aula_id = null, aula_manual = false where id = $1", [slotId]);
-  await q("delete from alertas where tipo = 'choque_aula' and slot_id = $1", [slotId]);
+  await recalcularAlertas();
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
   revalidatePath("/alertas");
@@ -156,8 +192,10 @@ export async function quitarAula(slotId: number) {
 // también se refresca esa página para que la clase desaparezca de su lista al instante.
 export async function quitarAsignacion(slotId: number, profesorId?: number) {
   await q("update asignaciones set profesor_id=null, estado='rechazada', automatica=false where slot_id=$1", [slotId]);
+  await recalcularAlertas();   // la clase queda sin docente: puede aparecer choque/sin_candidato, o bajar una sobrecarga
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
+  revalidatePath("/alertas");
   if (profesorId) revalidatePath(`/profesores/${profesorId}`);
   revalidatePath("/");
 }
@@ -173,8 +211,11 @@ export async function eliminarDocente(profesorId: number) {
     await client.query("begin");
     await client.query("delete from asignaciones where profesor_id=$1", [profesorId]);
     await client.query("update slots set docente_id=null where docente_id=$1", [profesorId]);
-    await client.query("delete from alertas where profesor_id=$1", [profesorId]);
     await client.query("delete from profesores where id=$1", [profesorId]); // cascade: cv + candidatos
+    // Recalcula alertas dentro de la MISMA transacción: sus clases quedan libres (posible
+    // sin_candidato/choque) y desaparece su sobrecarga. Una sola foto coherente del estado final.
+    await recomputarAlertas((sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows));
     await client.query("commit");
   } catch (e) {
     await client.query("rollback");
@@ -184,8 +225,114 @@ export async function eliminarDocente(profesorId: number) {
   }
   revalidatePath("/profesores");
   revalidatePath("/asignacion");
+  revalidatePath("/alertas");
   revalidatePath("/");
   redirect("/profesores");
+}
+
+// ---------- CRUD de aulas (catálogo de salones) ----------
+
+export type CrearAulaState = { error?: string };
+
+const parseCapacidad = (raw: string): { ok: true; val: number | null } | { ok: false } => {
+  const t = raw.trim();
+  if (!t) return { ok: true, val: null };          // sin capacidad: válido (pero el acomodo la ignorará)
+  const n = Number(t);
+  if (!Number.isInteger(n) || n <= 0) return { ok: false };
+  return { ok: true, val: n };
+};
+
+// Da de alta un salón nuevo en el catálogo.
+export async function crearAula(_prev: CrearAulaState, fd: FormData): Promise<CrearAulaState> {
+  const clave = String(fd.get("clave") ?? "").trim();
+  const tipo = String(fd.get("tipo") ?? "").trim() || null;
+  const cap = parseCapacidad(String(fd.get("capacidad") ?? ""));
+  if (!clave) return { error: "Escribe la clave o nombre del salón." };
+  if (!cap.ok) return { error: "La capacidad debe ser un número entero mayor que 0 (o déjala vacía)." };
+  const dup = await q<{ id: number }>("select id from aulas where lower(clave)=lower($1)", [clave]);
+  if (dup.length) return { error: `Ya existe un salón con la clave "${clave}".` };
+  await q("insert into aulas (clave, tipo, capacidad) values ($1,$2,$3)", [clave, tipo, cap.val]);
+  revalidatePath("/aulas");
+  return {};
+}
+
+// Edita tipo y capacidad de un salón existente (la clave es su identificador y no se cambia aquí).
+// Capturar la capacidad faltante permite que el acomodo automático vuelva a considerar el salón.
+export async function editarAula(aulaId: number, fd: FormData) {
+  const tipo = String(fd.get("tipo") ?? "").trim() || null;
+  const cap = parseCapacidad(String(fd.get("capacidad") ?? ""));
+  await q("update aulas set tipo=$1, capacidad=$2 where id=$3",
+    [tipo, cap.ok ? cap.val : null, aulaId]);
+  revalidatePath("/aulas");
+}
+
+// Borra un salón SOLO si ninguna clase de septiembre lo usa (si no, no hace nada: protege los datos).
+export async function eliminarAula(aulaId: number) {
+  const [u] = await q<{ n: number }>(
+    "select count(*)::int n from slots where aula_id=$1 and es_historial=false", [aulaId]);
+  if (u.n > 0) return;   // en uso: no se borra (la UI tampoco muestra el botón)
+  await q("delete from aulas where id=$1", [aulaId]);
+  revalidatePath("/aulas");
+}
+
+// ---------- Edición del docente (datos básicos + materias que puede dar) ----------
+
+export type EditarDocenteState = { error?: string };
+
+// Edita los datos básicos del docente. No toca su CV ni sus candidaturas (eso se maneja aparte).
+// El slug NO cambia: es el identificador estable (URLs, nombre del CV); sólo cambia lo que se muestra.
+export async function editarDocente(
+  profesorId: number, _prev: EditarDocenteState, fd: FormData,
+): Promise<EditarDocenteState> {
+  const nombre = String(fd.get("nombre") ?? "").trim();
+  const licenciatura = String(fd.get("licenciatura") ?? "").trim();
+  const aniosRaw = String(fd.get("anios_experiencia") ?? "").trim();
+  const maestria = String(fd.get("maestria") ?? "").trim() || null;
+  const doctorado = String(fd.get("doctorado") ?? "").trim() || null;
+  const coordinador = String(fd.get("coordinador") ?? "").trim();
+
+  if (!nombre || !licenciatura || !aniosRaw)
+    return { error: "Faltan campos obligatorios: nombre, licenciatura y años de experiencia." };
+  if (!coordinador) return { error: "Indica qué coordinador(a) académico lo va a asignar." };
+  if (!esCoordinador(coordinador)) return { error: "Coordinador(a) no válido." };
+  const anios = Number(aniosRaw);
+  if (!Number.isFinite(anios) || anios < 0) return { error: "Años de experiencia debe ser un número válido." };
+
+  const dup = await q<{ id: number }>(
+    "select id from profesores where lower(nombre)=lower($1) and id<>$2", [nombre, profesorId]);
+  if (dup.length) return { error: "Ya existe otro docente con ese nombre." };
+
+  await q(
+    `update profesores set nombre=$1, licenciatura=$2, maestria=$3, doctorado=$4, anios_experiencia=$5, coordinador=$6 where id=$7`,
+    [nombre, licenciatura, maestria, doctorado, anios, coordinador, profesorId]);
+  revalidatePath(`/profesores/${profesorId}`);
+  revalidatePath("/profesores");
+  redirect(`/profesores/${profesorId}`);
+}
+
+// Marca que el docente PUEDE dar una materia del catálogo (candidatura manual, +40 como el historial).
+// Una candidatura nueva puede resolver un "sin_candidato", así que recalculamos alertas.
+export async function agregarCandidatura(profesorId: number, fd: FormData) {
+  const materiaNombre = String(fd.get("materia") ?? "").trim();
+  if (!materiaNombre) return;
+  const [m] = await q<{ id: number }>("select id from materias where lower(nombre)=lower($1)", [materiaNombre]);
+  if (!m) return;   // sólo materias que ya existen en el catálogo
+  await q(
+    `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
+     values ($1,$2,'historial',40,'Agregado por coordinación: puede dar esta materia')
+     on conflict (profesor_id, materia_id, fuente) do nothing`, [profesorId, m.id]);
+  await recalcularAlertas();
+  revalidatePath(`/profesores/${profesorId}`);
+  revalidatePath(`/profesores/${profesorId}/editar`);
+}
+
+// Quita una materia de las que el docente puede dar (todas sus fuentes para esa materia).
+// Si era el único candidato de esa materia, puede aparecer un "sin_candidato": recalculamos.
+export async function quitarCandidatura(profesorId: number, materiaId: number) {
+  await q("delete from materia_candidatos where profesor_id=$1 and materia_id=$2", [profesorId, materiaId]);
+  await recalcularAlertas();
+  revalidatePath(`/profesores/${profesorId}`);
+  revalidatePath(`/profesores/${profesorId}/editar`);
 }
 
 // ---------- Edición de la materia por grupo (lo que en datos llamamos "slot") ----------
@@ -197,21 +344,26 @@ const limpiarHora = (h: string) => {
   return /^\d{1,2}:\d{2}$/.test(t) ? t : null;   // 'HH:MM' o nada
 };
 
-// Edita día y horario de una materia por grupo. (No re-corre el motor: las alertas son una foto.)
+// Edita día y horario de una materia por grupo. NO re-corre el motor (no reasigna docentes),
+// pero sí recalcula las alertas: cambiar la hora puede crear o resolver choques y traslados.
 export async function editarHorario(slotId: number, fd: FormData) {
   const dia = String(fd.get("dia") ?? "").trim() || null;
   const hi = limpiarHora(String(fd.get("hora_inicio") ?? ""));
   const hf = limpiarHora(String(fd.get("hora_fin") ?? ""));
   await q("update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id=$4 and es_historial=false",
     [dia, hi, hf, slotId]);
+  await recalcularAlertas();   // cambiar día/hora puede crear o resolver choques, traslados y choques de aula
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
+  revalidatePath("/alertas");
 }
 
 // Elimina una materia por grupo (ej. "NO SE APERTURA"). Cascada borra su asignación y alertas.
 export async function eliminarSlot(slotId: number) {
   await q("delete from slots where id=$1 and es_historial=false", [slotId]);
+  await recalcularAlertas();   // al desaparecer la clase, se recalcula el diagnóstico del resto
   revalidatePath("/asignacion");
+  revalidatePath("/alertas");
   revalidatePath("/");
   redirect("/asignacion");
 }
@@ -259,7 +411,9 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
      values ($1,$2,false,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
     [plantel, CICLO_SEPT, grupoId, materia.id, cuatrimestre, tipo, modalidad, dia, hi, hf]);
 
+  await recalcularAlertas();   // una clase nueva nace sin docente y (si es presencial) sin aula: levanta sus alertas
   revalidatePath("/asignacion");
+  revalidatePath("/alertas");
   revalidatePath("/");
   redirect(`/asignacion/${slot.id}`);
 }

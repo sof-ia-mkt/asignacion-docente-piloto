@@ -1,6 +1,8 @@
 import Link from "next/link";
-import { getSlotsSeptiembre, getPlanteles } from "@/lib/queries";
+import { getSlotsSeptiembre, getPlanteles, contarSugeridas } from "@/lib/queries";
 import { Estado, TipoClase, planCorto, plantelCorto } from "@/lib/ui";
+import { confirmarSugeridas } from "@/app/actions";
+import { ConfirmButton } from "@/lib/confirm-button";
 
 const FILTROS = [
   { v: "", label: "Todos" },
@@ -15,10 +17,12 @@ export default async function AsignacionPage({
   const estado = sp.estado ?? "";
   const qstr = sp.q ?? "";
   const plantel = sp.plantel ?? "";
-  const [{ rows, total }, planteles] = await Promise.all([
+  const [{ rows, total }, planteles, sugeridas] = await Promise.all([
     getSlotsSeptiembre({ estado, q: qstr, plantel }),
     getPlanteles(),
+    contarSugeridas(plantel),
   ]);
+  const ambito = plantel ? plantelCorto(plantel) : "todos los planteles";
 
   // Construye un href de /asignacion conservando los filtros actuales y cambiando uno.
   const href = (cambios: Record<string, string>) => {
@@ -40,9 +44,20 @@ export default async function AsignacionPage({
             {total} materias por grupo{plantel ? ` en ${plantelCorto(plantel)}` : " (todos los planteles)"}. Sin asignar aparecen primero.
           </p>
         </div>
-        <Link href="/asignacion/nueva" className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">
-          + Nueva materia por grupo
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          {sugeridas > 0 && (
+            <form action={confirmarSugeridas.bind(null, plantel || undefined)}>
+              <ConfirmButton
+                message={`¿Confirmar las ${sugeridas} sugerencias del sistema en ${ambito}? Quedarán como "Confirmada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
+                className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm whitespace-nowrap hover:bg-green-700">
+                Confirmar {sugeridas} sugerida{sugeridas === 1 ? "" : "s"}
+              </ConfirmButton>
+            </form>
+          )}
+          <Link href="/asignacion/nueva" className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">
+            + Nueva materia por grupo
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 items-center">

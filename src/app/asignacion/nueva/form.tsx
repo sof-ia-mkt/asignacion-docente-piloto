@@ -8,6 +8,7 @@ const label = "block text-sm font-medium text-slate-700 mb-1";
 const TIPOS = ["DISCIPLINAR", "MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "VIRTUAL"];
 const MODALIDADES = ["PRESENCIAL", "ASINCRÓNICA"];
 const DIAS = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO", "N/A"];
+const CUATRIS = ["1°", "2°", "3°", "4°", "5°", "6°", "7°", "8°", "9°"];
 
 export function NuevaMateriaForm({
   planteles,
@@ -20,8 +21,21 @@ export function NuevaMateriaForm({
 }) {
   const [state, action, pending] = useActionState<CrearSlotState, FormData>(crearSlot, {});
 
+  // Aviso suave (no bloquea): una clase PRESENCIAL sin horario casi siempre es un olvido.
+  // Las virtuales/asincrónicas no tienen hora fija, así que ahí no preguntamos.
+  function avisarSiFaltaHorario(e: React.FormEvent<HTMLFormElement>) {
+    const f = e.currentTarget;
+    const modalidad = (f.elements.namedItem("modalidad") as HTMLSelectElement)?.value;
+    const horaInicio = (f.elements.namedItem("hora_inicio") as HTMLInputElement)?.value.trim();
+    if (modalidad === "PRESENCIAL" && !horaInicio) {
+      if (!window.confirm("Es una clase PRESENCIAL sin horario. Lo normal es que tenga hora. ¿Crearla así de todos modos?")) {
+        e.preventDefault();
+      }
+    }
+  }
+
   return (
-    <form action={action} className="space-y-5 max-w-2xl">
+    <form action={action} onSubmit={avisarSiFaltaHorario} className="space-y-5 max-w-2xl">
       <div className="grid md:grid-cols-2 gap-4">
         <div>
           <label className={label}>Plantel *</label>
@@ -54,8 +68,11 @@ export function NuevaMateriaForm({
           </datalist>
         </div>
         <div>
-          <label className={label}>Cuatrimestre <span className="text-slate-400 font-normal">(opcional)</span></label>
-          <input name="cuatrimestre" className={input} placeholder="Ej. 3°" />
+          <label className={label}>Cuatrimestre *</label>
+          <select name="cuatrimestre" required defaultValue="" className={input}>
+            <option value="" disabled>Elige el cuatrimestre…</option>
+            {CUATRIS.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
 
         <div>
