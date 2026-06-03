@@ -4,12 +4,21 @@ import { getProfesor } from "@/lib/queries";
 import { Estado, TipoClase, plantelCorto } from "@/lib/ui";
 import { quitarAsignacion, eliminarDocente } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { MateriasAsignables, type GrupoAbierto } from "./materias-asignables";
 
 export default async function ProfesorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await getProfesor(Number(id));
   if (!data) notFound();
-  const { prof, candidatas, asignaciones, historial } = data;
+  const { prof, candidatas, asignaciones, historial, gruposAbiertos } = data;
+
+  // Grupos abiertos (sin docente) agrupados por materia, para poder asignarlo desde su ficha.
+  const gruposPorMateria = new Map<number, GrupoAbierto[]>();
+  for (const g of gruposAbiertos) {
+    const lista = gruposPorMateria.get(g.materia_id) ?? [];
+    lista.push(g);
+    gruposPorMateria.set(g.materia_id, lista);
+  }
 
   // Para distinguir lo que YA da de lo que todavía es una oportunidad.
   const yaAsignadas = new Set(asignaciones.map((a) => a.materia));
@@ -21,8 +30,16 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
     if (!prev || c.puntaje > prev.puntaje) porMateria.set(c.materia_id, c);
   }
   const todas = [...porMateria.values()]
-    .map((c) => ({ ...c, yaLaDa: yaAsignadas.has(c.materia) }))
-    .sort((a, b) => Number(a.yaLaDa) - Number(b.yaLaDa) || b.puntaje - a.puntaje);
+    .map((c) => ({
+      materia_id: c.materia_id, materia: c.materia, puntaje: c.puntaje, razon: c.razon,
+      yaLaDa: yaAsignadas.has(c.materia),
+      grupos: gruposPorMateria.get(c.materia_id) ?? [],
+    }))
+    // Ordena: primero las que SÍ se pueden asignar (no asignadas y con grupos abiertos), luego por puntaje.
+    .sort((a, b) =>
+      Number(a.yaLaDa) - Number(b.yaLaDa) ||
+      Number(b.grupos.length > 0) - Number(a.grupos.length > 0) ||
+      b.puntaje - a.puntaje);
   // Tres niveles de señal: ya la impartió (40, hecho) · CV fuerte (25) · afinidad débil (15/8, se colapsa).
   const impartio = todas.filter((c) => c.puntaje >= 40);
   const cvFuerte = todas.filter((c) => c.puntaje >= 25 && c.puntaje < 40);
@@ -34,18 +51,6 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       <div className={`text-2xl font-semibold ${n === 0 ? "text-slate-300" : color}`}>{n}</div>
       <div className="text-xs text-slate-500">{label}</div>
     </div>
-  );
-
-  // Cada materia recomendada como una "pastilla" compacta. ✓ = ya la tiene asignada (atenuada);
-  // disponible = blanca. El detalle (razón + puntaje) va en el tooltip para no llenar de texto.
-  const chipReco = (c: (typeof todas)[number]) => (
-    <span key={c.materia_id} title={`${c.razon ? c.razon + " · " : ""}puntaje ${c.puntaje}`}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm border ${
-        c.yaLaDa ? "bg-slate-100 text-slate-400 border-slate-200"
-                 : "bg-white text-slate-700 border-slate-300"}`}>
-      {c.yaLaDa && <span className="text-green-600 text-xs">✓</span>}
-      {c.materia}
-    </span>
   );
 
   return (
@@ -174,50 +179,12 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
         )}
       </div>
 
-      {/* Materias que puede dar: por niveles de señal, en pastillas compactas (no una tabla infinita).
-          Lo fuerte (impartió + CV fuerte) se ve de entrada; la afinidad débil se colapsa. */}
-      <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
-        <div>
-          <h2 className="text-sm font-medium text-slate-700">Materias que puede dar</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Ordenadas por qué tan fuerte es la señal{disponibles > 0 ? ` · ${disponibles} disponible${disponibles === 1 ? "" : "s"} para asignar` : ""}.
-            {" "}<span className="text-green-600">✓</span> = ya la tiene asignada en septiembre · pasa el cursor sobre cada una para ver la razón.
-          </p>
-        </div>
-
-        {todas.length === 0 ? (
-          <p className="text-sm text-slate-400">Sin recomendaciones.</p>
-        ) : (
-          <>
-            {impartio.length > 0 && (
-              <div>
-                <div className="mb-2 text-xs font-medium text-slate-500">
-                  Ya las impartió <span className="font-normal text-slate-400">({impartio.length}) · la señal más fuerte</span>
-                </div>
-                <div className="flex flex-wrap gap-2">{impartio.map(chipReco)}</div>
-              </div>
-            )}
-
-            {cvFuerte.length > 0 && (
-              <div>
-                <div className="mb-2 text-xs font-medium text-slate-500">
-                  Sugeridas por su CV <span className="font-normal text-slate-400">({cvFuerte.length}) · buena afinidad</span>
-                </div>
-                <div className="flex flex-wrap gap-2">{cvFuerte.map(chipReco)}</div>
-              </div>
-            )}
-
-            {afinidad.length > 0 && (
-              <details>
-                <summary className="cursor-pointer select-none text-xs font-medium text-slate-500 hover:text-slate-700">
-                  Otras posibles por afinidad <span className="font-normal text-slate-400">({afinidad.length}) · señal débil — clic para ver</span>
-                </summary>
-                <div className="mt-2 flex flex-wrap gap-2">{afinidad.map(chipReco)}</div>
-              </details>
-            )}
-          </>
-        )}
-      </div>
+      {/* Materias que puede dar: pastillas por nivel de señal. Al hacer clic en una materia con
+          grupos abiertos se despliegan abajo sus grupos sin docente para asignarlo ahí mismo. */}
+      <MateriasAsignables
+        impartio={impartio} cvFuerte={cvFuerte} afinidad={afinidad}
+        profesorId={prof.id} nombre={prof.nombre} disponibles={disponibles}
+      />
 
       {/* Borrar docente: acción destructiva, separada y con aviso de lo que implica. */}
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">

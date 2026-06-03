@@ -87,7 +87,35 @@ export async function getProfesor(id: number) {
        left join grupos g on g.id = s.grupo_id
       where s.es_historial = true and s.docente_id = $1
       order by s.plantel, m.nombre`, [id]);
-  return { prof, candidatas, asignaciones, historial };
+  // Grupos ABIERTOS (clases de septiembre sin docente) de las materias que este docente puede dar.
+  // Sirve para asignarlo desde su propia ficha: al elegir una materia candidata, se ven los grupos
+  // libres de esa materia. `choque` marca si el docente YA tiene otra clase encimada a ese día/hora
+  // (mismo criterio de traslape que usamos en la pantalla de asignación y para las aulas).
+  const gruposAbiertos = await q<{
+    slot_id: number; materia_id: number; materia: string; grupo: string | null; plantel: string | null;
+    dia: string | null; hora_inicio: string | null; hora_fin: string | null; tipo: string | null;
+    modalidad: string | null; choque: string | null;
+  }>(
+    `select s.id slot_id, s.materia_id, m.nombre materia, g.clave grupo, s.plantel,
+            s.dia, s.hora_inicio, s.hora_fin, s.tipo, s.modalidad,
+            (select m2.nombre || coalesce(' · ' || g2.clave, '')
+               from asignaciones a2
+               join slots s2 on s2.id = a2.slot_id
+               left join materias m2 on m2.id = s2.materia_id
+               left join grupos g2 on g2.id = s2.grupo_id
+              where a2.profesor_id = $1
+                and s2.es_historial = false and s2.id <> s.id
+                and s2.dia = s.dia and s2.hora_inicio < s.hora_fin and s.hora_inicio < s2.hora_fin
+              order by s2.hora_inicio limit 1) choque
+       from slots s
+       join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id
+       left join asignaciones a on a.slot_id = s.id
+      where s.es_historial = false
+        and a.profesor_id is null
+        and s.materia_id in (select materia_id from materia_candidatos where profesor_id = $1)
+      order by s.materia_id, s.plantel, s.dia, s.hora_inicio`, [id]);
+  return { prof, candidatas, asignaciones, historial, gruposAbiertos };
 }
 
 export type SlotFiltro = { estado?: string; q?: string; plantel?: string };

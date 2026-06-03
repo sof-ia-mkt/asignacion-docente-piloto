@@ -138,6 +138,7 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
   revalidatePath("/alertas");
+  revalidatePath(`/profesores/${profesorId}`);  // si se asignó desde su ficha, que se refleje al instante
   revalidatePath("/");
 }
 
