@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getResumen } from "@/lib/queries";
-import { Card, Sev, tipoLabel } from "@/lib/ui";
+import { Card, Sev } from "@/lib/ui";
+import { AlertasPorTipo } from "./alertas-por-tipo";
 
 export default async function Home() {
   const r = await getResumen();
@@ -26,19 +27,9 @@ export default async function Home() {
 
       <div className="grid md:grid-cols-2 gap-4">
         <div className="rounded-lg border border-slate-200 bg-white p-4">
-          <h2 className="text-sm font-medium text-slate-700 mb-3">Alertas por tipo</h2>
-          {r.alertas.length === 0 ? (
-            <p className="text-sm text-slate-400">Sin alertas.</p>
-          ) : (
-            <ul className="space-y-2">
-              {r.alertas.map((a) => (
-                <li key={a.tipo} className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700">{tipoLabel(a.tipo)}</span>
-                  <span className="font-semibold text-slate-900">{a.n}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+          <h2 className="text-sm font-medium text-slate-700 mb-1">Alertas por tipo</h2>
+          <p className="text-xs text-slate-400 mb-2">Toca cada tipo para ver qué significa y un ejemplo.</p>
+          <AlertasPorTipo alertas={r.alertas} />
           <Link href="/alertas" className="mt-3 inline-block text-sm text-blue-700 hover:underline">
             Ver todas las alertas →
           </Link>

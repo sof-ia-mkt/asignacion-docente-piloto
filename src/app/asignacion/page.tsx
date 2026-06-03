@@ -98,7 +98,7 @@ export default async function AsignacionPage({
                 <td className="px-4 py-2 text-slate-600">{s.grupo ?? "—"}</td>
                 <td className="px-4 py-2 text-right text-slate-600">{s.alumnos ?? <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2 text-slate-600">{s.aula ?? <span className="text-slate-300">—</span>}</td>
-                <td className="px-4 py-2 text-slate-600">{s.dia ? `${s.dia} ${s.hora_inicio}-${s.hora_fin}` : "—"}</td>
+                <td className="px-4 py-2 text-slate-600">{s.dia && s.dia !== "N/A" && s.hora_inicio && s.hora_fin ? `${s.dia} ${s.hora_inicio}-${s.hora_fin}` : <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2 text-slate-700">{s.docente ?? <span className="text-slate-400">sin docente</span>}</td>
                 <td className="px-4 py-2"><Estado e={s.estado} /></td>
                 <td className="px-4 py-2 text-right">

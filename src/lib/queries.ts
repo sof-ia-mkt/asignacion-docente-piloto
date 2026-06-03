@@ -300,10 +300,11 @@ export async function getSlot(id: number) {
                    and s2.dia = $2 and s2.hora_inicio < $4 and $3 < s2.hora_fin
               ) ocupada
          from aulas au
-        where au.capacidad is not null and ($5::int is null or au.capacidad >= $5)
-        order by ocupada asc, (au.tipo = 'Teoría') desc, au.capacidad asc
-        limit 8`,
-      [id, slot.dia, slot.hora_inicio, slot.hora_fin, slot.alumnos])
+        where au.id = $6                                              -- el salón ya asignado SIEMPRE aparece
+           or (au.capacidad is not null and ($5::int is null or au.capacidad >= $5))
+        order by (au.id = $6) desc, ocupada asc, (au.tipo = 'Teoría') desc, au.capacidad asc nulls last
+        limit 9`,
+      [id, slot.dia, slot.hora_inicio, slot.hora_fin, slot.alumnos, slot.aula_id])
     : [];
   return { slot, candidatos, aulas };
 }
@@ -380,11 +381,16 @@ export async function getAlertas(f: { tipo?: string; severidad?: string; plantel
   return q<{
     id: number; tipo: string; severidad: string; detalle: string;
     slot_id: number | null; profesor_id: number | null; profesor: string | null; plantel: string | null;
+    materia: string | null; grupo: string | null;
+    dia: string | null; hora_inicio: string | null; hora_fin: string | null;
   }>(
-    `select a.id, a.tipo, a.severidad, a.detalle, a.slot_id, a.profesor_id, p.nombre profesor, s.plantel
+    `select a.id, a.tipo, a.severidad, a.detalle, a.slot_id, a.profesor_id, p.nombre profesor, s.plantel,
+            m.nombre materia, g.clave grupo, s.dia, s.hora_inicio, s.hora_fin
        from alertas a
        left join profesores p on p.id = a.profesor_id
        left join slots s on s.id = a.slot_id
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id
        ${where}
       order by case a.severidad when 'alta' then 0 when 'media' then 1 else 2 end, a.tipo, a.id`,
     params);

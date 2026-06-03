@@ -86,7 +86,7 @@ export default async function SlotPage({
               {slot.plantel && <span className="font-medium text-slate-700">{plantelCorto(slot.plantel)}</span>}
               <span>Grupo {slot.grupo ?? "—"}</span>
               {slot.alumnos != null && <span>{slot.alumnos} alumnos</span>}
-              <span>{slot.dia ? `${slot.dia} ${slot.hora_inicio}-${slot.hora_fin}` : "sin horario"}</span>
+              <span>{esAsincronica(slot.modalidad) ? "Asincrónica · sin horario fijo" : sinHorario ? "Sin horario" : `${slot.dia} ${slot.hora_inicio}-${slot.hora_fin}`}</span>
             </div>
           </div>
           <Estado e={slot.estado} />

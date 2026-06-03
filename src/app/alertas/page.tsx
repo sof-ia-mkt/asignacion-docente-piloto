@@ -1,28 +1,11 @@
 import Link from "next/link";
 import { getAlertas, getAlertasResumen, getPlanteles } from "@/lib/queries";
-import { Sev, tipoLabel, plantelCorto } from "@/lib/ui";
+import { Sev, tipoLabel, plantelCorto, ALERTA_INFO } from "@/lib/ui";
 import { recalcularAlertasManual } from "@/app/actions";
 
 // Orden de las tarjetas: lo accionable primero, "Sin aula" al final.
 const TIPOS_ORDEN = ["sin_candidato", "choque_horario", "traslado_plantel", "sobrecarga", "docente_repetido", "sin_aula"];
 
-// Texto que la plataforma muestra para explicar cada tipo de alerta — pensado para
-// que coordinación entienda (y pueda explicar en demo) qué detecta cada una.
-// La clave está en distinguir CHOQUE (el reloj) de TRASLADO (el mapa).
-const EXPLICA: { tipo: string; idea: string; texto: string }[] = [
-  { tipo: "sin_candidato", idea: "Nadie la puede dar",
-    texto: "Ninguna persona del catálogo tiene historial ni CV que respalde esa materia. Hay que buscar docente o revisar el plan." },
-  { tipo: "choque_horario", idea: "El reloj — misma hora",
-    texto: "El mismo docente quedó con dos clases que se enciman en el horario (ej. lunes 10:00–12:00 en dos grupos). No puede estar en dos aulas al mismo tiempo." },
-  { tipo: "traslado_plantel", idea: "El mapa — distinto campus",
-    texto: "El docente tiene dos clases el mismo día, a horas distintas (no se empalman), pero en planteles distintos sin tiempo suficiente para trasladarse (ej. Casa Blanca 10:00 → Tecate 10:30, imposible). Severidad alta = menos de 60 min entre campus." },
-  { tipo: "sobrecarga", idea: "Demasiadas clases",
-    texto: "El docente acumula muchos slots en la semana. Conviene repartir la carga para que sea realista." },
-  { tipo: "docente_repetido", idea: "Concentración en una persona",
-    texto: "Una misma persona quedó asignada a muchos grupos. No es un error, pero conviene revisar si depende demasiado de un solo docente." },
-  { tipo: "sin_aula", idea: "Falta espacio",
-    texto: "La materia tiene docente pero todavía no tiene aula asignada para impartirse." },
-];
 const SEVERIDADES = [
   { v: "alta", label: "Alta" },
   { v: "media", label: "Media" },
@@ -106,19 +89,26 @@ export default async function AlertasPage({
         <div className="border-t border-slate-100 px-4 py-3 space-y-3">
           <p className="text-xs text-slate-500">
             Las alertas no son errores: son focos para revisar antes de cerrar el cuatrimestre.
-            La diferencia más fina es <strong>Choque de horario</strong> (mismo docente, misma hora)
+            La diferencia más fina es <strong>Sin maestro por horario</strong> (la clase quedó sin docente porque su candidato ya da otra a esa misma hora)
             frente a <strong>Traslado entre planteles</strong> (mismo docente, horas distintas pero campus distintos sin tiempo de moverse).
           </p>
           <dl className="grid md:grid-cols-2 gap-3">
-            {EXPLICA.map((e) => (
-              <div key={e.tipo} className="rounded-md border border-slate-100 bg-slate-50/60 p-3">
-                <dt className="flex items-baseline justify-between gap-2 mb-1">
-                  <span className="text-sm font-medium text-slate-800">{tipoLabel(e.tipo)}</span>
-                  <span className="text-[11px] text-slate-400 whitespace-nowrap">{e.idea}</span>
-                </dt>
-                <dd className="text-xs text-slate-600 leading-relaxed">{e.texto}</dd>
-              </div>
-            ))}
+            {TIPOS_ORDEN.map((t) => {
+              const info = ALERTA_INFO[t];
+              if (!info) return null;
+              return (
+                <div key={t} className="rounded-md border border-slate-100 bg-slate-50/60 p-3">
+                  <dt className="flex items-baseline justify-between gap-2 mb-1">
+                    <span className="text-sm font-medium text-slate-800">{tipoLabel(t)}</span>
+                    <span className="text-[11px] text-slate-400 whitespace-nowrap">{info.idea}</span>
+                  </dt>
+                  <dd className="text-xs text-slate-600 leading-relaxed">
+                    {info.que}
+                    <span className="mt-1 block italic text-slate-500">{info.ejemplo}</span>
+                  </dd>
+                </div>
+              );
+            })}
           </dl>
         </div>
       </details>
@@ -145,35 +135,61 @@ export default async function AlertasPage({
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr className="text-left">
-              <th className="px-4 py-2 font-medium">Severidad</th>
-              <th className="px-4 py-2 font-medium">Tipo</th>
-              <th className="px-4 py-2 font-medium">Plantel</th>
-              <th className="px-4 py-2 font-medium">Detalle</th>
-              <th className="px-4 py-2 font-medium">Docente</th>
-              <th className="px-4 py-2"></th>
+              <th className="px-3 py-2 font-medium">Prioridad</th>
+              <th className="px-3 py-2 font-medium">Clase</th>
+              <th className="px-3 py-2 font-medium">Cuándo</th>
+              <th className="px-3 py-2 font-medium">Plantel</th>
+              <th className="px-3 py-2 font-medium">Qué pasa</th>
+              <th className="px-3 py-2 font-medium">Docente</th>
+              <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {alertas.map((a) => (
-              <tr key={a.id} className="hover:bg-slate-50 align-top">
-                <td className="px-4 py-2"><Sev s={a.severidad} /></td>
-                <td className="px-4 py-2 text-slate-700 whitespace-nowrap">{tipoLabel(a.tipo)}</td>
-                <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{a.plantel ? plantelCorto(a.plantel) : "—"}</td>
-                <td className="px-4 py-2 text-slate-600">{a.detalle}</td>
-                <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
-                  {a.profesor_id ? (
-                    <Link href={`/profesores/${a.profesor_id}`} className="text-blue-700 hover:underline">{a.profesor ?? "ver"}</Link>
-                  ) : "—"}
-                </td>
-                <td className="px-4 py-2 text-right whitespace-nowrap">
-                  {a.slot_id && (
-                    <Link href={`/asignacion/${a.slot_id}`} className="text-blue-700 hover:underline">Revisar</Link>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {alertas.map((a) => {
+              // El docente es el "sujeto" de la alerta solo en estos tipos. En "sin maestro por
+              // horario" el profesor es el candidato que NO pudo tomarla (va en "Qué pasa"), no un
+              // docente asignado: por eso ahí NO se muestra en esta columna (antes confundía).
+              const docenteEsSujeto = ["sobrecarga", "docente_repetido", "traslado_plantel"].includes(a.tipo);
+              const dia = a.dia ? a.dia.charAt(0) + a.dia.slice(1).toLowerCase() : null;
+              const cuando = dia
+                ? `${dia} ${a.hora_inicio ?? ""}${a.hora_fin ? `–${a.hora_fin}` : ""}`.trim()
+                : null;
+              return (
+                <tr key={a.id} className="hover:bg-slate-50 align-top">
+                  <td className="px-3 py-3"><Sev s={a.severidad} /></td>
+                  <td className="px-3 py-3">
+                    {a.materia ? (
+                      <>
+                        <div className="font-medium text-slate-800">{a.materia}</div>
+                        {a.grupo && <div className="text-xs text-slate-400">{a.grupo}</div>}
+                      </>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-slate-600 whitespace-nowrap">{cuando ?? <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-3 text-slate-500 whitespace-nowrap">{a.plantel ? plantelCorto(a.plantel) : <span className="text-slate-300">—</span>}</td>
+                  <td className="px-3 py-3 text-slate-600 max-w-md">
+                    <span className="text-[11px] font-medium text-slate-400">{tipoLabel(a.tipo)}</span>
+                    <span className="block">{a.detalle}</span>
+                  </td>
+                  <td className="px-3 py-3 whitespace-nowrap">
+                    {docenteEsSujeto && a.profesor_id ? (
+                      <Link href={`/profesores/${a.profesor_id}`} className="text-blue-700 hover:underline">{a.profesor ?? "ver"}</Link>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
+                    {a.slot_id && (
+                      <Link href={`/asignacion/${a.slot_id}`} className="text-blue-700 hover:underline">Revisar →</Link>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
             {alertas.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-6 text-center text-sm text-slate-400">Sin alertas con estos filtros.</td></tr>
+              <tr><td colSpan={7} className="px-4 py-6 text-center text-sm text-slate-400">Sin alertas con estos filtros.</td></tr>
             )}
           </tbody>
         </table>

@@ -64,7 +64,7 @@ export async function calcularAlertas(query) {
     if (!cands.length) {
       alertas.push({
         tipo: "sin_candidato", severidad: "alta", slot_id: s.id, slot_id_2: null, profesor_id: null,
-        detalle: `Nadie en el sistema puede dar "${s.materia}" (${s.grupo ?? "sin grupo"}). Hay que buscar o contratar a un docente para esta clase.`,
+        detalle: `Nadie en el catálogo tiene historial ni CV para esta materia, así que el sistema no pudo proponer a nadie. Hay que buscar o contratar a un docente.`,
       });
       continue;
     }
@@ -72,9 +72,16 @@ export async function calcularAlertas(query) {
     if (!libre) {
       const top = cands[0];
       const conf = (horario.get(top.profesor_id) || []).find((h) => overlap(h, s));
+      // ¿Es el único candidato o hay más? Cambia el mensaje y la salida sugerida.
+      const quien = cands.length === 1
+        ? `Su único candidato, ${nombreCorto(top.nombre)},`
+        : `Su mejor candidato (de ${cands.length}), ${nombreCorto(top.nombre)},`;
+      const salida = cands.length === 1
+        ? "Como es el único, tendrás que conseguir otro docente o mover el horario de una de las clases."
+        : "Elige a otro de los candidatos disponibles o mueve el horario de una de las clases.";
       alertas.push({
         tipo: "choque_horario", severidad: "alta", slot_id: s.id, slot_id_2: conf?.slot_id ?? null, profesor_id: top.profesor_id,
-        detalle: `"${s.materia}" (${s.grupo}), ${s.dia} ${s.hora_inicio}-${s.hora_fin}: quedó sin maestro. El mejor candidato (${nombreCorto(top.nombre)}) ya da "${conf?.materia ?? "otra clase"}" a esa misma hora, así que no puede tomar las dos. Elige otro docente disponible o cambia el horario de una de las clases.`,
+        detalle: `Quedó sin maestro. ${quien} ya da "${conf?.materia ?? "otra clase"}" a esa misma hora, así que no puede tomar las dos. ${salida}`,
       });
     }
     // Si hay un candidato libre pero el slot sigue vacío, es "sin docente" (no es alerta: es una oportunidad).
@@ -111,7 +118,7 @@ export async function calcularAlertas(query) {
   for (const v of porProfMat.values()) {
     if (v.grupos.size >= REPETIDO_GRUPOS) alertas.push({
       tipo: "docente_repetido", severidad: "media", slot_id: v.slot, slot_id_2: null, profesor_id: v.prof,
-      detalle: `Da "${v.materia}" en ${v.grupos.size} grupos distintos. Está muy concentrado en una sola materia; conviene repartir algunos grupos con otro docente.`,
+      detalle: `Quedó en ${v.grupos.size} grupos distintos de esta materia. Muy concentrado en una sola persona; conviene repartir algunos grupos con otro docente.`,
     });
   }
 
@@ -155,8 +162,8 @@ export async function calcularAlertas(query) {
     alertas.push({
       tipo: "sin_aula", severidad: hayCupo ? "media" : "alta", slot_id: s.id, slot_id_2: null, profesor_id: null,
       detalle: hayCupo
-        ? `"${s.materia}" (${s.grupo}), ${s.dia ?? "sin día"} ${s.hora_inicio ?? ""}-${s.hora_fin ?? ""}: no tiene salón asignado. Asígnale un aula o cambia el horario.`
-        : `"${s.materia}" (${s.grupo}): ningún salón alcanza para ${al} alumnos (el más grande es de ${CAP_MAX}). Hay que dividir el grupo o conseguir un espacio mayor.`,
+        ? `No tiene salón asignado. Asígnale un aula o cambia el horario.`
+        : `Ningún salón alcanza para ${al} alumnos (el más grande es de ${CAP_MAX}). Hay que dividir el grupo o conseguir un espacio mayor.`,
     });
   }
 
@@ -185,6 +192,11 @@ export async function calcularAlertas(query) {
 // Recalcula y GUARDA (borra las anteriores e inserta las nuevas). Devuelve un resumen.
 // El control de transacción lo decide quien llama (la app la envuelve; el motor ya está en una).
 export async function recomputarAlertas(query) {
+  // Candado serializador (a nivel de transacción): el patrón "borrar todas + insertar" NO es
+  // seguro bajo concurrencia — dos recálculos encimados duplican el set completo de alertas.
+  // Este advisory lock obliga a que se ejecuten uno por uno; se libera solo al commit/rollback
+  // de quien nos envuelve (la app y el motor siempre nos llaman dentro de una transacción).
+  await query("select pg_advisory_xact_lock(4928134751)", []);
   const alertas = await calcularAlertas(query);
   await query("delete from alertas", []);
   for (const al of alertas) {

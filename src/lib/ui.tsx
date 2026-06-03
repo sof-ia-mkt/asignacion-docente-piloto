@@ -46,7 +46,7 @@ export function Estado({ e }: { e: string | null }) {
 }
 
 const TIPO_LABEL: Record<string, string> = {
-  choque_horario: "Choque de horario",
+  choque_horario: "Sin maestro por horario",
   sin_candidato: "Sin candidato",
   sobrecarga: "Sobrecarga",
   docente_repetido: "Docente repetido",
@@ -55,6 +55,49 @@ const TIPO_LABEL: Record<string, string> = {
   traslado_plantel: "Traslado entre planteles",
 };
 export const tipoLabel = (t: string) => TIPO_LABEL[t] ?? t;
+
+// Explicación legible de cada tipo de alerta, para coordinación. FUENTE ÚNICA: la usan
+// el panel del inicio (acordeón) y la página de Alertas; no debe duplicarse en ningún otro lado.
+//   idea    = titular de una línea (el "de qué va")
+//   que     = qué significa, en lenguaje de coordinación
+//   ejemplo = un caso concreto para aterrizarlo
+export const ALERTA_INFO: Record<string, { idea: string; que: string; ejemplo: string }> = {
+  sin_candidato: {
+    idea: "Nadie la puede dar",
+    que: "Para esa materia no hay ningún docente con historial ni CV que la respalde, así que el sistema no pudo proponer a nadie. Hay que buscar o contratar a un docente, o revisar si la materia sigue en el plan.",
+    ejemplo: "Ej.: una materia que nadie dio en mayo y que no aparece en ningún CV del catálogo.",
+  },
+  choque_horario: {
+    idea: "Hay quién, pero está ocupado",
+    que: "La clase se quedó SIN maestro porque su mejor candidato ya está dando otra clase a esa misma hora. El sistema nunca pone a un docente en dos lugares a la vez: prefiere dejar la clase vacía y avisarte para que elijas a otro disponible o muevas el horario. (También salta si tú, a mano, asignas al mismo docente en dos clases encimadas.)",
+    ejemplo: "Ej.: 'Programación móvil' (sábado 10:00) quedó sin maestro porque su mejor candidato ya da 'Algoritmos' ese mismo sábado a las 10:00.",
+  },
+  traslado_plantel: {
+    idea: "Mismo día, otro campus",
+    que: "El docente tiene dos clases el mismo día a horas distintas (no se enciman), pero en planteles diferentes y sin tiempo suficiente para trasladarse entre campus. Severidad alta = menos de 60 minutos entre una y otra.",
+    ejemplo: "Ej.: termina en Casa Blanca 10:00 y empieza en Tecate 10:30; no alcanza a llegar.",
+  },
+  sobrecarga: {
+    idea: "Demasiadas clases",
+    que: "Un docente acumula más clases de las recomendadas para un cuatrimestre. Conviene repartir parte de su carga con otro profesor para que sea realista.",
+    ejemplo: "Ej.: un profesor quedó propuesto en 9 grupos cuando lo sano son menos.",
+  },
+  docente_repetido: {
+    idea: "Todo en una persona",
+    que: "El mismo docente aparece propuesto en varios grupos de la misma materia. No es un error —a veces da dos grupos a propósito—, pero conviene revisar si dependemos demasiado de una sola persona.",
+    ejemplo: "Ej.: el mismo profesor quedó en 3 grupos distintos de Álgebra.",
+  },
+  sin_aula: {
+    idea: "Falta salón",
+    que: "Una clase presencial que ya tiene docente pero a la que no se le pudo asignar salón: no hay un aula libre con cupo suficiente en ese horario. Casi siempre es por saturación de un mismo día.",
+    ejemplo: "Ej.: muchas clases del sábado se quedan sin salón porque ese día se ocupan todas las aulas.",
+  },
+  choque_aula: {
+    idea: "Dos clases, un salón",
+    que: "Dos clases distintas quedaron en el mismo salón a la misma hora. Una de las dos necesita otra aula.",
+    ejemplo: "Ej.: dos grupos asignados al aula 104 el sábado a las 11:00.",
+  },
+};
 
 // Nombre corto del plan: "LICENCIATURA EN INGENIERÍA MECATRÓNICA" -> "Ing. Mecatrónica".
 export function planCorto(nombre: string | null): string {
