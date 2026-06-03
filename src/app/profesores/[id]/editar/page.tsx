@@ -4,6 +4,7 @@ import { getProfesor, getMaterias } from "@/lib/queries";
 import { agregarCandidatura, quitarCandidatura } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { EditarDocenteForm } from "./form";
+import { CVUpload } from "./cv-upload";
 
 export default async function EditarDocentePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,6 +30,16 @@ export default async function EditarDocentePage({ params }: { params: Promise<{ 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-medium text-slate-700 mb-4">Datos del docente</h2>
         <EditarDocenteForm prof={prof} />
+      </div>
+
+      {/* Leer CV con IA: suma materias candidatas y actualiza sus datos */}
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-medium text-slate-700">Leer CV con IA</h2>
+        <p className="mb-3 text-xs text-slate-400">
+          Sube el PDF del CV y Claude deduce qué materias del catálogo puede dar (~$0.05). Suma materias
+          candidatas y actualiza sus datos (licenciatura, experiencia, área); no borra lo que ya tiene ni reasigna sus clases.
+        </p>
+        <CVUpload profesorId={profId} />
       </div>
 
       {/* Materias que puede dar */}
