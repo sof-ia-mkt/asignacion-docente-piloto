@@ -20,8 +20,8 @@ export default async function Home() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Clases de septiembre" value={r.sep_total} hint="por asignar y confirmar" />
-        <Card title="Con docente propuesto" value={`${r.asignados}`} hint={`${pct}% · ${r.confirmados} confirmadas, ${r.sugeridos} por revisar`} />
-        <Card title="Sin docente" value={sinAsignar} hint="nadie propuesto aún" />
+        <Card title="Con docente asignado" value={`${r.asignados}`} hint={`${pct}% · ${r.confirmados} confirmadas, ${r.sugeridos} por revisar`} />
+        <Card title="Sin docente" value={sinAsignar} hint="sin docente aún" />
         <Card title="Alertas" value={totalAlertas} hint="ver detalle" />
       </div>
 

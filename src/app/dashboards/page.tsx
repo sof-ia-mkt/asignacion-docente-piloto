@@ -24,8 +24,8 @@ export default async function DashboardsHome({
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Clases de septiembre" value={e.total} hint="por asignar y confirmar" />
-        <Card title="Con docente propuesto" value={`${pct}%`} hint={`${e.asignados} clases · falta confirmar`} />
-        <Card title="Sin docente" value={sinAsignar} hint="nadie propuesto aún" />
+        <Card title="Con docente asignado" value={`${pct}%`} hint={`${e.asignados} clases · falta confirmar`} />
+        <Card title="Sin docente" value={sinAsignar} hint="sin docente aún" />
         <Card title="Confirmadas" value={e.confirmados} hint={`${e.sugeridos} aún por revisar`} />
         <Card title="Docentes con carga" value={doc.resumen.docentes} hint={`promedio ${doc.resumen.avgc} materias`} />
         <Card title="Sobrecargados" value={doc.resumen.sobre} hint=">12 materias" />

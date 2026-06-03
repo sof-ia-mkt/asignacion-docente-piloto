@@ -80,11 +80,11 @@ export const ALERTA_INFO: Record<string, { idea: string; que: string; ejemplo: s
   sobrecarga: {
     idea: "Demasiadas clases",
     que: "Un docente acumula más clases de las recomendadas para un cuatrimestre. Conviene repartir parte de su carga con otro profesor para que sea realista.",
-    ejemplo: "Ej.: un profesor quedó propuesto en 9 grupos cuando lo sano son menos.",
+    ejemplo: "Ej.: un profesor quedó asignado a 9 grupos cuando lo sano son menos.",
   },
   docente_repetido: {
     idea: "Todo en una persona",
-    que: "El mismo docente aparece propuesto en varios grupos de la misma materia. No es un error —a veces da dos grupos a propósito—, pero conviene revisar si dependemos demasiado de una sola persona.",
+    que: "El mismo docente quedó asignado en varios grupos de la misma materia. No es un error —a veces da dos grupos a propósito—, pero conviene revisar si dependemos demasiado de una sola persona.",
     ejemplo: "Ej.: el mismo profesor quedó en 3 grupos distintos de Álgebra.",
   },
   sin_aula: {

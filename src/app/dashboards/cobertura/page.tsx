@@ -18,7 +18,7 @@ export default async function CoberturaPage({
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Total de clases" value={e.total} />
-        <Card title="Con docente propuesto" value={`${e.asignados}`} hint={`${pct}% · falta confirmar`} />
+        <Card title="Con docente asignado" value={`${e.asignados}`} hint={`${pct}% · falta confirmar`} />
         <Card title="Sin docente" value={sinAsignar} />
         <Card title="Confirmadas" value={e.confirmados} hint={`${e.sugeridos} por revisar`} />
       </div>
