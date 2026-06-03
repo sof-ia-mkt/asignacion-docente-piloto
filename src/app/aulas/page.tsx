@@ -33,9 +33,9 @@ export default async function AulasPage() {
           <tbody className="divide-y divide-slate-100">
             {lista.map((a) => (
               <tr key={a.id} className={a.capacidad == null ? "bg-amber-50/60" : ""}>
-                <td className="py-1.5 pr-2 text-slate-800 whitespace-nowrap">{a.clave}</td>
+                <td className="py-1.5 pr-3 text-slate-800 break-words">{a.clave}</td>
                 <td className="py-1.5 pr-2" colSpan={2}>
-                  <form action={editarAula.bind(null, a.id)} className="flex items-center gap-1">
+                  <form action={editarAula.bind(null, a.id)} className="flex flex-wrap items-center gap-1">
                     <input name="tipo" defaultValue={a.tipo ?? ""} list="tipos-aula-edit"
                       placeholder="—" className={cell + " w-28"} />
                     <input name="capacidad" type="number" min="1" defaultValue={a.capacidad ?? ""}
@@ -58,7 +58,7 @@ export default async function AulasPage() {
                       </ConfirmButton>
                     </form>
                   ) : (
-                    <span className="text-xs text-slate-300" title="En uso por clases asignadas">en uso</span>
+                    <span className="text-xs text-slate-300 whitespace-nowrap" title="En uso por clases asignadas">en uso</span>
                   )}
                 </td>
               </tr>

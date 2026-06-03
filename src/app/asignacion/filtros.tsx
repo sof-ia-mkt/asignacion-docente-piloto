@@ -1,0 +1,117 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { plantelCorto, tipoLabel } from "@/lib/ui";
+
+type Conteo = { total: number; sin: number; con: number };
+
+// Barra de filtros de la pantalla de Asignación (Opción C):
+//  - Control segmentado por estado (Todos / Sin docente / Con docente) con conteos.
+//  - Buscador + tres menús desplegables (plantel, cuatrimestre, tipo).
+//  - Pastillas quitables que muestran los filtros activos.
+// Toda la navegación se hace por URL (searchParams) para que sea compartible y
+// que el server vuelva a consultar. Cambiar cualquier filtro reinicia a la página 1.
+export function AsignacionFiltros({
+  estado, plantel, cuatri, tipo, qstr, planteles, cuatris, tipos, conteo,
+}: {
+  estado: string; plantel: string; cuatri: string; tipo: string; qstr: string;
+  planteles: { plantel: string; n: number }[];
+  cuatris: string[]; tipos: string[]; conteo: Conteo;
+}) {
+  const router = useRouter();
+  const [q, setQ] = useState(qstr);
+  // Si el buscador se limpia desde una pastilla (cambia qstr), sincroniza el input.
+  useEffect(() => { setQ(qstr); }, [qstr]);
+
+  // Arma la URL con los filtros actuales + los cambios pedidos. Omite 'page' a
+  // propósito: cualquier cambio de filtro debe regresar a la primera página.
+  const build = (cambios: Record<string, string>) => {
+    const cur: Record<string, string> = {};
+    if (estado) cur.estado = estado;
+    if (plantel) cur.plantel = plantel;
+    if (cuatri) cur.cuatri = cuatri;
+    if (tipo) cur.tipo = tipo;
+    if (qstr) cur.q = qstr;
+    const merged = { ...cur, ...cambios };
+    const limpio = Object.fromEntries(Object.entries(merged).filter(([, v]) => v));
+    const qs = new URLSearchParams(limpio).toString();
+    return `/asignacion${qs ? `?${qs}` : ""}`;
+  };
+  const go = (cambios: Record<string, string>) => router.push(build(cambios));
+
+  const sel = "rounded-md border border-slate-200 bg-white text-sm text-slate-700 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300 hover:border-slate-300";
+
+  const segmentos = [
+    { v: "", label: "Todas", n: conteo.total },
+    { v: "sin_asignar", label: "Sin docente", n: conteo.sin },
+    { v: "asignado", label: "Con docente", n: conteo.con },
+  ];
+
+  const pills: { label: string; clear: Record<string, string> }[] = [];
+  if (plantel) pills.push({ label: plantelCorto(plantel), clear: { plantel: "" } });
+  if (cuatri) pills.push({ label: `Cuatri ${cuatri}`, clear: { cuatri: "" } });
+  if (tipo) pills.push({ label: tipoLabel(tipo), clear: { tipo: "" } });
+  if (qstr) pills.push({ label: `"${qstr}"`, clear: { q: "" } });
+
+  return (
+    <div className="space-y-3">
+      {/* Eje principal de trabajo: qué falta por asignar */}
+      <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+        {segmentos.map((s) => {
+          const activo = estado === s.v;
+          return (
+            <button key={s.v || "todas"} type="button" onClick={() => go({ estado: s.v })}
+              className={`px-3.5 py-1.5 rounded-md text-sm transition ${activo ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"}`}>
+              {s.label} <span className={activo ? "text-slate-300" : "text-slate-400"}>· {s.n}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Búsqueda + menús desplegables compactos */}
+      <div className="flex flex-wrap items-center gap-2">
+        <form onSubmit={(e) => { e.preventDefault(); go({ q }); }} className="flex items-center gap-2">
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar materia o grupo…"
+            className="rounded-md border border-slate-200 text-sm px-3 py-1.5 w-60 focus:outline-none focus:ring-2 focus:ring-slate-300" />
+          <button type="submit" className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm">Buscar</button>
+        </form>
+
+        <select value={plantel} onChange={(e) => go({ plantel: e.target.value })} className={sel} aria-label="Plantel">
+          <option value="">Todos los planteles</option>
+          {planteles.map((p) => (
+            <option key={p.plantel} value={p.plantel}>{plantelCorto(p.plantel)} ({p.n})</option>
+          ))}
+        </select>
+
+        <select value={cuatri} onChange={(e) => go({ cuatri: e.target.value })} className={sel} aria-label="Cuatrimestre">
+          <option value="">Todos los cuatrimestres</option>
+          {cuatris.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+
+        <select value={tipo} onChange={(e) => go({ tipo: e.target.value })} className={sel} aria-label="Tipo de clase">
+          <option value="">Todos los tipos</option>
+          {tipos.map((t) => <option key={t} value={t}>{tipoLabel(t)}</option>)}
+        </select>
+      </div>
+
+      {/* Filtros activos: pastillas quitables */}
+      {pills.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-400">Filtros:</span>
+          {pills.map((p, i) => (
+            <button key={i} type="button" onClick={() => go(p.clear)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-sm hover:bg-slate-200"
+              title="Quitar este filtro">
+              {p.label} <span className="text-slate-400" aria-hidden>✕</span>
+            </button>
+          ))}
+          {pills.length > 1 && (
+            <button type="button" onClick={() => go({ plantel: "", cuatri: "", tipo: "", q: "" })}
+              className="text-xs text-blue-700 hover:underline ml-1">Limpiar todo</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

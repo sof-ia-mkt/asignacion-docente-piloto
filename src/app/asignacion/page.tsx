@@ -1,33 +1,38 @@
 import Link from "next/link";
-import { getSlotsSeptiembre, getPlanteles, contarSugeridas } from "@/lib/queries";
+import { getSlotsSeptiembre, getPlanteles, contarSugeridas, getFacetasSlots, getConteoPorEstado } from "@/lib/queries";
 import { Estado, TipoClase, planCorto, plantelCorto } from "@/lib/ui";
 import { confirmarSugeridas } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
-
-const FILTROS = [
-  { v: "", label: "Todos" },
-  { v: "sin_asignar", label: "Sin docente" },
-  { v: "asignado", label: "Con docente" },
-];
+import { AsignacionFiltros } from "./filtros";
 
 export default async function AsignacionPage({
   searchParams,
-}: { searchParams: Promise<{ estado?: string; q?: string; plantel?: string }> }) {
+}: { searchParams: Promise<{ estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string; page?: string }> }) {
   const sp = await searchParams;
   const estado = sp.estado ?? "";
   const qstr = sp.q ?? "";
   const plantel = sp.plantel ?? "";
-  const [{ rows, total }, planteles, sugeridas] = await Promise.all([
-    getSlotsSeptiembre({ estado, q: qstr, plantel }),
+  const cuatri = sp.cuatri ?? "";
+  const tipo = sp.tipo ?? "";
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const [{ rows, total, pages, limit }, planteles, sugeridas, facetas, conteo] = await Promise.all([
+    getSlotsSeptiembre({ estado, q: qstr, plantel, cuatri, tipo, page }),
     getPlanteles(),
     contarSugeridas(plantel),
+    getFacetasSlots(plantel),
+    getConteoPorEstado({ q: qstr, plantel, cuatri, tipo }),
   ]);
   const ambito = plantel ? plantelCorto(plantel) : "todos los planteles";
 
   // Construye un href de /asignacion conservando los filtros actuales y cambiando uno.
+  // Al cambiar cualquier filtro se vuelve a la página 1 (salvo que se cambie 'page').
   const href = (cambios: Record<string, string>) => {
-    const base = { ...(estado ? { estado } : {}), ...(qstr ? { q: qstr } : {}), ...(plantel ? { plantel } : {}) };
+    const base = {
+      ...(estado ? { estado } : {}), ...(qstr ? { q: qstr } : {}), ...(plantel ? { plantel } : {}),
+      ...(cuatri ? { cuatri } : {}), ...(tipo ? { tipo } : {}), ...(page > 1 ? { page: String(page) } : {}),
+    };
     const merged = { ...base, ...cambios };
+    if (!("page" in cambios)) delete (merged as Record<string, string>).page;
     const limpio = Object.fromEntries(Object.entries(merged).filter(([, val]) => val));
     const qsParams = new URLSearchParams(limpio).toString();
     return `/asignacion${qsParams ? `?${qsParams}` : ""}`;
@@ -60,30 +65,9 @@ export default async function AsignacionPage({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1 items-center">
-        <span className="text-xs text-slate-400 mr-1">Plantel:</span>
-        <Link href={href({ plantel: "" })} className={chip(plantel === "")}>Todos</Link>
-        {planteles.map((p) => (
-          <Link key={p.plantel} href={href({ plantel: p.plantel })} className={chip(plantel === p.plantel)}>
-            {plantelCorto(p.plantel)} <span className={plantel === p.plantel ? "text-slate-300" : "text-slate-400"}>· {p.n}</span>
-          </Link>
-        ))}
-      </div>
-
-      <form className="flex flex-wrap gap-2 items-center">
-        <div className="flex gap-1">
-          {FILTROS.map((f) => (
-            <Link key={f.v} href={href({ estado: f.v })} className={chip(estado === f.v)}>
-              {f.label}
-            </Link>
-          ))}
-        </div>
-        <input name="q" defaultValue={qstr} placeholder="Buscar materia o grupo…"
-          className="px-3 py-1.5 rounded-md border border-slate-200 text-sm w-64" />
-        {estado && <input type="hidden" name="estado" value={estado} />}
-        {plantel && <input type="hidden" name="plantel" value={plantel} />}
-        <button className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm">Buscar</button>
-      </form>
+      <AsignacionFiltros
+        estado={estado} plantel={plantel} cuatri={cuatri} tipo={tipo} qstr={qstr}
+        planteles={planteles} cuatris={facetas.cuatris} tipos={facetas.tipos} conteo={conteo} />
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
         <table className="w-full text-sm">
@@ -125,9 +109,53 @@ export default async function AsignacionPage({
           </tbody>
         </table>
       </div>
-      {rows.length === total ? null : (
-        <p className="text-xs text-slate-400">Mostrando {rows.length} de {total}. Afina con la búsqueda.</p>
-      )}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-xs text-slate-400">
+          {total === 0
+            ? "Sin resultados con estos filtros."
+            : `Mostrando ${(page - 1) * limit + 1}–${(page - 1) * limit + rows.length} de ${total}.`}
+        </p>
+        {pages > 1 && (
+          <nav className="flex items-center gap-1 text-sm">
+            {page > 1 && (
+              <Link href={href({ page: String(page - 1) })}
+                className="px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
+                ← Anterior
+              </Link>
+            )}
+            {paginas(page, pages).map((p, i) =>
+              p === "…" ? (
+                <span key={`g${i}`} className="px-2 text-slate-400">…</span>
+              ) : (
+                <Link key={p} href={href({ page: String(p) })} className={chip(p === page) + " px-3 py-1.5"}>
+                  {p}
+                </Link>
+              ),
+            )}
+            {page < pages && (
+              <Link href={href({ page: String(page + 1) })}
+                className="px-2.5 py-1.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
+                Siguiente →
+              </Link>
+            )}
+          </nav>
+        )}
+      </div>
     </div>
   );
+}
+
+// Lista compacta de páginas con elipsis: 1 … (p-1) p (p+1) … N.
+function paginas(actual: number, total: number): (number | "…")[] {
+  const out: (number | "…")[] = [];
+  const push = (n: number) => { if (!out.includes(n) && n >= 1 && n <= total) out.push(n); };
+  const cerca = [actual - 1, actual, actual + 1];
+  const orden = [1, ...cerca, total].filter((n, i, a) => a.indexOf(n) === i && n >= 1 && n <= total).sort((a, b) => a - b);
+  let prev = 0;
+  for (const n of orden) {
+    if (n - prev > 1) out.push("…");
+    push(n);
+    prev = n;
+  }
+  return out;
 }

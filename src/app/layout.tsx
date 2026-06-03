@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Asignación Docente — CENYCA",
-  description: "Recomendación y asignación de docentes por cuatrimestre (piloto Casa Blanca)",
+  description: "Recomendación y asignación de docentes por cuatrimestre — Coordinación Académica",
 };
 
 // Todas las páginas leen datos en vivo de la base y están detrás del candado:
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-6">
             <Link href="/" className="font-semibold tracking-tight">
               Asignación Docente
-              <span className="ml-2 text-xs font-normal text-slate-400">CENYCA · Casa Blanca</span>
+              <span className="ml-2 text-xs font-normal text-slate-400">Coordinación Académica</span>
             </Link>
             <nav className="flex gap-1 text-sm">
               {nav.map((n) => (

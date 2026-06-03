@@ -123,7 +123,37 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
 }
 
 // Asigna (o reasigna) un docente a un slot. Queda como decisión humana: confirmada, no automática.
+//
+// Reglas duras (candado de integridad, NO solo de UI):
+//  1. Un docente no puede estar en dos clases a la misma hora. Si ya tiene otra clase de
+//     septiembre encimada con el día/hora de ésta, se rechaza el empalme (sin excepción).
+//  2. Una clase PRESENCIAL/síncrona sin horario no puede recibir docente: sin día/hora no
+//     podríamos verificar el empalme. Las ASINCRÓNICAS (en línea, sin hora por diseño) sí
+//     se pueden asignar: no ocupan un horario, así que no chocan con nada.
+// La UI ya oculta el botón en estos casos; este candado protege ante pantallas viejas o
+// llamadas directas. Lanza un error claro (en español) si se intenta violar la regla.
 export async function asignar(slotId: number, profesorId: number, puntaje?: number, razon?: string) {
+  const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null }>(
+    "select modalidad, dia, hora_inicio, hora_fin from slots where id=$1 and es_historial=false", [slotId]);
+  if (!s) throw new Error("La clase no existe o no es del cuatrimestre a asignar.");
+  const asincronica = (s.modalidad ?? "").toUpperCase().includes("ASINCR");
+  const sinHorario = !s.dia || !s.hora_inicio || !s.hora_fin;
+  if (sinHorario && !asincronica)
+    throw new Error("Esta clase presencial aún no tiene horario. Captura el día y la hora antes de asignar un docente (así se evita empalmar al maestro).");
+  if (!sinHorario) {
+    const [choque] = await q<{ mat: string }>(
+      `select coalesce(m2.nombre, 'otra clase') || coalesce(' · ' || g2.clave, '') mat
+         from asignaciones a2
+         join slots s2 on s2.id = a2.slot_id
+         left join materias m2 on m2.id = s2.materia_id
+         left join grupos g2 on g2.id = s2.grupo_id
+        where a2.profesor_id = $1 and s2.es_historial = false and s2.id <> $2
+          and s2.dia = $3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+        order by s2.hora_inicio limit 1`,
+      [profesorId, slotId, s.dia, s.hora_inicio, s.hora_fin]);
+    if (choque)
+      throw new Error(`Ese docente ya da "${choque.mat}" a esa misma hora. No se puede empalmar: primero libéralo de esa clase o cambia el horario de alguna de las dos.`);
+  }
   await q(
     `insert into asignaciones (slot_id, profesor_id, estado, puntaje, razon, automatica)
      values ($1,$2,'confirmada',$3,$4,false)

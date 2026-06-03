@@ -118,7 +118,7 @@ export async function getProfesor(id: number) {
   return { prof, candidatas, asignaciones, historial, gruposAbiertos };
 }
 
-export type SlotFiltro = { estado?: string; q?: string; plantel?: string };
+export type SlotFiltro = { estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string; page?: number };
 
 // Planteles con materias por asignar (para el selector de la pantalla de asignación).
 export async function getPlanteles() {
@@ -128,14 +128,64 @@ export async function getPlanteles() {
   return rows;
 }
 
+// Opciones disponibles para los filtros de cuatrimestre y tipo, acotadas al plantel
+// elegido (para no ofrecer filtros que no devolverían nada). Solo septiembre.
+export async function getFacetasSlots(plantel?: string) {
+  const params: unknown[] = [];
+  let scope = "";
+  if (plantel) { params.push(plantel); scope = ` and s.plantel = $${params.length}`; }
+  const cuatris = await q<{ v: string }>(
+    `select distinct s.cuatrimestre v from slots s
+      where s.es_historial = false and s.cuatrimestre is not null${scope}`, params);
+  const tipos = await q<{ v: string }>(
+    `select distinct s.tipo v from slots s
+      where s.es_historial = false and s.tipo is not null${scope}`, params);
+  // Orden natural: cuatris por el número inicial (1°, 2°…); tipos alfabético.
+  const ordenCuatri = (s: string) => parseInt(s, 10) || 99;
+  return {
+    cuatris: cuatris.map((r) => r.v).sort((a, b) => ordenCuatri(a) - ordenCuatri(b) || a.localeCompare(b)),
+    tipos: tipos.map((r) => r.v).sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+// Conteos para el control segmentado (Todos / Sin docente / Con docente).
+// Respeta plantel + búsqueda + cuatri + tipo, pero NO el estado: así cada segmento
+// muestra cuántas clases caen en él dentro del resto de filtros activos.
+export async function getConteoPorEstado(f: SlotFiltro) {
+  const where: string[] = ["s.es_historial = false"];
+  const params: unknown[] = [];
+  if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
+  if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length})`); }
+  if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
+  if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
+  const [r] = await q<{ total: number; sin: number; con: number }>(
+    `select count(*)::int total,
+            count(*) filter (where a.profesor_id is null)::int sin,
+            count(*) filter (where a.profesor_id is not null)::int con
+       from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id
+       left join asignaciones a on a.slot_id = s.id
+      where ${where.join(" and ")}`, params);
+  return r;
+}
+
 export async function getSlotsSeptiembre(f: SlotFiltro, limit = 100) {
   const where: string[] = ["s.es_historial = false"];
   const params: unknown[] = [];
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
   if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length})`); }
+  if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
+  if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
   if (f.estado === "asignado") where.push("a.profesor_id is not null");
   if (f.estado === "sin_asignar") where.push("a.profesor_id is null");
+  // Paginación: limit por página + offset según la página pedida (1-based).
+  const page = Math.max(1, f.page ?? 1);
+  const offset = (page - 1) * limit;
   params.push(limit);
+  const pLimit = params.length;
+  params.push(offset);
+  const pOffset = params.length;
   const rows = await q<{
     id: number; plantel: string; materia: string | null; grupo: string | null; dia: string | null;
     hora_inicio: string | null; hora_fin: string | null; tipo: string | null;
@@ -153,12 +203,13 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 100) {
        left join asignaciones a on a.slot_id = s.id
        left join profesores p on p.id = a.profesor_id
       where ${where.join(" and ")}
-      order by (a.profesor_id is null) desc, m.nombre, g.clave
-      limit $${params.length}`, params);
+      order by (a.profesor_id is null) desc, m.nombre, g.clave, s.id
+      limit $${pLimit} offset $${pOffset}`, params);
   const [tot] = await q<{ n: number }>(
     "select count(*)::int n from slots s left join materias m on m.id=s.materia_id left join grupos g on g.id=s.grupo_id left join asignaciones a on a.slot_id=s.id where " + where.join(" and "),
-    params.slice(0, params.length - 1));
-  return { rows, total: tot.n };
+    params.slice(0, pLimit - 1));
+  const pages = Math.max(1, Math.ceil(tot.n / limit));
+  return { rows, total: tot.n, page, pages, limit };
 }
 
 // Cuántas sugerencias automáticas siguen sin revisar (estado 'sugerida', con docente),

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSlot, buscarProfesores } from "@/lib/queries";
-import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge } from "@/lib/ui";
+import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge, esAsincronica } from "@/lib/ui";
 import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, editarHorario, eliminarSlot } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 
@@ -26,21 +26,52 @@ export default async function SlotPage({
   const aulaChica = slot.aula_capacidad != null && slot.alumnos != null && slot.aula_capacidad < slot.alumnos;
   // Sin día/hora no podemos evaluar choques de horario del docente (no hay con qué comparar).
   const sinHorario = !slot.dia || !slot.hora_inicio || !slot.hora_fin;
+  // Las asincrónicas (en línea, sin hora por diseño) no ocupan un horario: se pueden asignar
+  // aunque no tengan día/hora. Las presenciales/síncronas sin horario NO se pueden asignar
+  // hasta capturar el horario (si no, no podríamos verificar el empalme del docente).
+  const esAsinc = esAsincronica(slot.modalidad);
+  const requiereHorario = sinHorario && !esAsinc;
+  // Regla dura: nadie en dos clases a la misma hora. Un candidato con choque queda bloqueado.
+  const bloqueado = (choque: string | null) => requiereHorario || !!choque;
 
   // Celda de disponibilidad del docente a la hora de ESTA clase: libre / choca / sin horario.
   const dispCell = (choque: string | null) => {
     if (sinHorario) return <span className="text-xs text-slate-400">sin horario</span>;
     if (choque) return (
-      <span className="text-xs font-medium text-red-700" title={`Ya tiene "${choque}" a esta misma hora — lo empalmarías`}>
+      <span className="text-xs font-medium text-red-700" title={`Ya tiene "${choque}" a esta misma hora — no se puede asignar (empalme)`}>
         choca · {choque}
       </span>
     );
     return <span className="text-xs text-green-700">libre</span>;
   };
 
+  // Motivo legible de por qué esta clase está sin docente (para el letrero de arriba).
+  const todosOcupados = candidatos.length > 0 && candidatos.every((c) => c.choque);
+
   return (
     <div className="space-y-5">
       <Link href="/asignacion" className="text-sm text-blue-700 hover:underline">← Asignación</Link>
+
+      {/* Letrero de motivo: solo cuando la clase está SIN docente. Explica en una línea por qué
+          el sistema no la asignó, para no tener que interpretar la tabla de candidatos. */}
+      {!slot.docente && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <span className="font-medium">Sin docente: </span>
+          {requiereHorario ? (
+            <>esta clase presencial aún no tiene horario. Captura el día y la hora abajo
+              (en <span className="font-medium">Día y horario</span>) para poder asignar un docente; así el sistema evita empalmarlo con otra clase.</>
+          ) : candidatos.length === 0 ? (
+            <>ningún docente califica para esta materia (ni por su historial de mayo ni por su CV con
+              confianza alta). Asígnalo a mano más abajo o <Link href="/profesores/nuevo" className="underline">da de alta un docente nuevo</Link>.</>
+          ) : todosOcupados ? (
+            <>hay {candidatos.length} {candidatos.length === 1 ? "candidato capaz" : "candidatos capaces"},
+              pero {candidatos.length === 1 ? "ya tiene" : "todos tienen"} otra clase a esta misma hora (los ves en rojo abajo).
+              Para asignar a alguno, primero libéralo de esa clase o cambia este horario.</>
+          ) : (
+            <>hay candidatos disponibles a esta hora. Elige uno en la tabla de abajo y pulsa Asignar.</>
+          )}
+        </div>
+      )}
 
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex items-start justify-between gap-4">
@@ -217,6 +248,10 @@ export default async function SlotPage({
                   <td className="py-1.5 text-right">
                     {slot.docente_id === c.profesor_id ? (
                       <span className="text-xs text-slate-400">asignado</span>
+                    ) : requiereHorario ? (
+                      <span className="text-xs text-slate-400" title="Captura el día y la hora de esta clase para poder asignar.">captura horario</span>
+                    ) : c.choque ? (
+                      <span className="text-xs text-red-700" title={`Ocupado: ya da "${c.choque}" a esta misma hora. No se puede empalmar.`}>ocupado</span>
                     ) : (
                       <form action={asignar.bind(null, slotId, c.profesor_id, c.puntaje, c.razon)}>
                         <button className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs">Asignar</button>
@@ -230,7 +265,10 @@ export default async function SlotPage({
         )}
         <p className="mt-3 text-xs text-slate-400">
           La carga es el número de materias ya asignadas a ese docente en septiembre.
-          {" "}<span className="text-green-700">Libre</span> / <span className="text-red-700">choca</span> indica si ya tiene otra clase a esta misma hora{sinHorario ? " (esta clase aún no tiene horario, por eso no se puede evaluar)" : ""}. Un choque no lo bloquea, pero evita empalmar.
+          {" "}<span className="text-green-700">Libre</span> / <span className="text-red-700">choca</span> indica si ya tiene otra clase a esta misma hora.
+          {requiereHorario
+            ? " Esta clase presencial aún no tiene horario: captúralo arriba para poder asignar (así se evita empalmar al docente)."
+            : " Un choque bloquea la asignación: un docente no puede estar en dos clases a la misma hora."}
         </p>
       </div>
 
@@ -276,6 +314,10 @@ export default async function SlotPage({
                     <td className="py-1.5 text-right">
                       {slot.docente_id === p.id ? (
                         <span className="text-xs text-slate-400">asignado</span>
+                      ) : requiereHorario ? (
+                        <span className="text-xs text-slate-400" title="Captura el día y la hora de esta clase para poder asignar.">captura horario</span>
+                      ) : p.choque ? (
+                        <span className="text-xs text-red-700" title={`Ocupado: ya da "${p.choque}" a esta misma hora. No se puede empalmar.`}>ocupado</span>
                       ) : (
                         <form action={asignar.bind(null, slotId, p.id, 0, "Asignación manual por coordinación")}>
                           <button className="px-2.5 py-1 rounded-md border border-slate-300 text-slate-700 text-xs hover:bg-slate-50">Asignar a mano</button>

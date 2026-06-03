@@ -7,6 +7,12 @@ export type Coordinador = (typeof COORDINADORES)[number];
 export const esCoordinador = (v: string): v is Coordinador =>
   (COORDINADORES as readonly string[]).includes(v);
 
+// Una clase ASINCRÓNICA (en línea, a ritmo del alumno) NO ocupa una hora fija: por diseño
+// no lleva día/hora y no puede empalmarse con nada. Las demás (presencial/síncrona) sí ocupan
+// un horario real. Se usa para decidir si exigir horario antes de asignar docente.
+export const esAsincronica = (modalidad: string | null | undefined) =>
+  (modalidad ?? "").toUpperCase().includes("ASINCR");
+
 const SEV: Record<string, string> = {
   alta: "bg-red-100 text-red-800 border-red-200",
   media: "bg-amber-100 text-amber-800 border-amber-200",
