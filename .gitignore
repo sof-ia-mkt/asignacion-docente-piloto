@@ -35,6 +35,7 @@ yarn-error.log*
 
 # respaldos / volcados con datos personales de docentes — NUNCA commitear
 respaldo_*.json
+/backups/
 *.bak-*
 scripts/_audit*.mjs
 
