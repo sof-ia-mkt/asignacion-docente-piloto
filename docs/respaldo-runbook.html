@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: #0f172a; font-size: 11.5px; line-height: 1.55; margin: 0;
+  }
+  h1 { font-size: 23px; margin: 0 0 2px; letter-spacing: -0.4px; }
+  h2 {
+    font-size: 15px; margin: 22px 0 8px; padding-bottom: 5px;
+    border-bottom: 2px solid #e2e8f0; color: #0f172a;
+  }
+  h3 { font-size: 12.5px; margin: 16px 0 5px; color: #1e293b; }
+  .sub { color: #64748b; font-size: 11px; margin: 0 0 4px; }
+  .meta { color: #94a3b8; font-size: 10px; margin: 0 0 14px; }
+  p { margin: 6px 0; }
+  code, .mono {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    background: #f1f5f9; padding: 1px 5px; border-radius: 4px; font-size: 10.5px;
+  }
+  pre {
+    background: #0f172a; color: #e2e8f0; padding: 11px 13px; border-radius: 7px;
+    font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 10px;
+    line-height: 1.5; overflow-x: auto; margin: 8px 0;
+  }
+  pre .c { color: #94a3b8; }
+  pre .g { color: #86efac; }
+  pre .y { color: #fde68a; }
+  ul, ol { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  .card {
+    border: 1px solid #e2e8f0; border-radius: 9px; padding: 12px 14px; margin: 10px 0;
+    background: #fafafa;
+  }
+  .golden {
+    border-left: 4px solid #f59e0b; background: #fffbeb; border-radius: 7px;
+    padding: 11px 14px; margin: 12px 0;
+  }
+  .danger {
+    border-left: 4px solid #ef4444; background: #fef2f2; border-radius: 7px;
+    padding: 11px 14px; margin: 12px 0;
+  }
+  .ok {
+    border-left: 4px solid #10b981; background: #ecfdf5; border-radius: 7px;
+    padding: 11px 14px; margin: 12px 0;
+  }
+  .tag {
+    display: inline-block; font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 2px 7px; border-radius: 20px; vertical-align: middle;
+  }
+  .tag-safe { background: #dcfce7; color: #166534; }
+  .tag-danger { background: #fee2e2; color: #991b1b; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 10.5px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  th { color: #64748b; font-weight: 600; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e2e8f0; color: #94a3b8; font-size: 9.5px; }
+  .prompt-box {
+    border: 2px dashed #cbd5e1; border-radius: 9px; padding: 6px 14px; margin: 10px 0;
+    background: #f8fafc;
+  }
+  strong { color: #0f172a; }
+</style>
+</head>
+<body>
+
+<h1>Respaldo de la plataforma — Asignación Docente CENYCA</h1>
+<p class="sub">Guía de respaldo y restauración + prompt para Claude</p>
+<p class="meta">Plantel Casa Blanca · Generado el 2026-06-03 · Mantener junto al proyecto</p>
+
+<div class="golden">
+  <strong>Regla de oro.</strong> Antes de cualquier operación riesgosa —recarga masiva de datos,
+  cambios de esquema, pruebas que escriben en la base, o una demo importante— <strong>haz un respaldo primero</strong>.
+  Toma segundos y es tu seguro contra "se rompió la plataforma".
+</div>
+
+<h2>Qué está protegido y dónde vive</h2>
+<table>
+  <tr><th>Pieza</th><th>Dónde se respalda</th><th>Cómo se recupera</th></tr>
+  <tr><td><strong>Código</strong> (la app)</td><td>GitHub (repo privado)</td><td>Clonar / revertir un commit</td></tr>
+  <tr><td><strong>Esquema</strong> (estructura de tablas)</td><td><code>db/migrations/</code> en el repo</td><td>Correr las migraciones en orden</td></tr>
+  <tr><td><strong>Datos</strong> (docentes, grupos, asignaciones…)</td><td><code>backups/respaldo_*.json.gz</code> (local, NO en GitHub)</td><td><code>restaurar_db.mjs</code></td></tr>
+</table>
+<p>Los datos contienen información personal de docentes (PII), por eso los respaldos
+<strong>no se suben a GitHub</strong> (están en <code>.gitignore</code>). Viven en tu Mac, en la carpeta
+<code>backups/</code> dentro del proyecto.</p>
+
+<h2>Cómo hacer un respaldo</h2>
+<p>Desde la carpeta del proyecto (<code>/Users/eme/asignacion-docente-piloto</code>):</p>
+<pre><span class="c"># Crea un respaldo nuevo con fecha y hora automáticas</span>
+node scripts/respaldo_db.mjs</pre>
+<p>Genera un archivo como <code>backups/respaldo_2026-06-03-16-40-00.json.gz</code> (comprimido) y
+te imprime cuántas filas guardó por tabla. <span class="tag tag-safe">Seguro</span> Solo <em>lee</em> la base, nunca la modifica.</p>
+
+<div class="ok">
+  <strong>Snapshot consistente.</strong> El respaldo lee todas las tablas dentro de una sola transacción
+  <code>repeatable read read only</code>: aunque alguien use la plataforma mientras corre, el respaldo captura
+  una foto coherente de un mismo instante.
+</div>
+
+<h2>Cómo restaurar (recuperar la base)</h2>
+<div class="danger">
+  <strong>Operación destructiva.</strong> Restaurar <strong>borra TODO el contenido actual</strong> de las tablas
+  y lo reemplaza por el del respaldo. Recuerda que la base es <strong>compartida entre local y producción</strong>:
+  restaurar afecta a las dos. Úsalo solo cuando de verdad quieras volver a un punto anterior.
+</div>
+
+<h3>Paso 1 — Ensayo (no escribe nada)</h3>
+<pre>node scripts/restaurar_db.mjs backups/respaldo_2026-06-03-16-40-00.json.gz</pre>
+<p>Sin <code>--confirmar</code> es solo un <strong>ensayo</strong>: te muestra qué contiene el respaldo y el orden
+seguro de inserción, pero <strong>no toca la base</strong>. <span class="tag tag-safe">Seguro</span></p>
+
+<h3>Paso 2 — Restaurar de verdad</h3>
+<pre>node scripts/restaurar_db.mjs backups/respaldo_2026-06-03-16-40-00.json.gz <span class="y">--confirmar</span></pre>
+<p><span class="tag tag-danger">Destructivo</span> Borra y recarga todo dentro de <strong>una sola transacción</strong>:
+si algo falla a mitad, no se aplica nada y la base queda intacta. Al terminar reajusta las secuencias para que
+los próximos registros no choquen.</p>
+
+<h2>Buenas prácticas</h2>
+<ul>
+  <li><strong>Respalda antes de cada demo</strong> y antes de cargar/normalizar datos masivamente.</li>
+  <li>Guarda una copia de los <code>.json.gz</code> más importantes <strong>fuera de la Mac</strong>
+      (un disco externo o tu Drive personal). Si la laptop falla, no pierdes los respaldos.</li>
+  <li>No borres los respaldos viejos a la ligera; pesan poco (~120 KB).</li>
+  <li>Nombra/anota qué pasó antes de cada respaldo importante (ej. "antes de cargar grados sept").</li>
+</ul>
+
+<h2>Red de seguridad adicional: respaldos automáticos de Supabase</h2>
+<p>Además del respaldo local, Supabase (donde vive la base) ofrece respaldos administrados:</p>
+<ul>
+  <li>En el panel de Supabase: <strong>Database → Backups</strong>. Respaldos diarios automáticos.</li>
+  <li>Con el plan Pro se habilita <strong>PITR</strong> (Point-In-Time Recovery): volver a cualquier minuto.</li>
+  <li>Esto cubre el caso de que tu Mac no esté disponible. Recomendado para producción.</li>
+</ul>
+
+<h2>Prompt para pegarle a Claude</h2>
+<p>Cuando quieras que Claude ejecute o verifique un respaldo, pégale este texto:</p>
+
+<div class="prompt-box">
+<pre style="background:#1e293b;">Contexto: plataforma "Asignación Docente CENYCA" (Next.js + Supabase),
+proyecto en /Users/eme/asignacion-docente-piloto. La base es COMPARTIDA
+entre local y producción, así que cualquier escritura afecta a las dos.
+
+Quiero que me ayudes con el respaldo de DATOS. Reglas:
+
+1. Para CREAR un respaldo (solo lee, es seguro):
+   node scripts/respaldo_db.mjs
+   -> genera backups/respaldo_<fecha>.json.gz y muestra filas por tabla.
+
+2. Para RESTAURAR primero haz SIEMPRE el ensayo (no escribe):
+   node scripts/restaurar_db.mjs <archivo.json.gz>
+   Solo si yo lo confirmo explícitamente, corre la versión real:
+   node scripts/restaurar_db.mjs <archivo.json.gz> --confirmar
+   (esto es DESTRUCTIVO: borra y recarga todas las tablas).
+
+3. NUNCA restaures (--confirmar) sin que yo te dé un OK explícito en el
+   chat. NUNCA subas los archivos de backups/ a GitHub (tienen datos
+   personales y están en .gitignore). No me digas el costo de las llamadas.
+
+4. Después de un respaldo, dime cuántas filas guardó por tabla y el
+   nombre del archivo. Si algo falla, dime el error tal cual.
+
+Tarea de hoy: [escribe aquí qué quieres — ej. "crea un respaldo nuevo"].</pre>
+</div>
+
+<div class="footer">
+  Asignación Docente CENYCA · Scripts: <code>scripts/respaldo_db.mjs</code> y <code>scripts/restaurar_db.mjs</code> ·
+  Este documento no contiene contraseñas ni claves. Las credenciales van en el documento aparte de seguridad.
+</div>
+
+</body>
+</html>
