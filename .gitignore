@@ -33,6 +33,11 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# respaldos / volcados con datos personales de docentes — NUNCA commitear
+respaldo_*.json
+*.bak-*
+scripts/_audit*.mjs
+
 # vercel
 .vercel
 

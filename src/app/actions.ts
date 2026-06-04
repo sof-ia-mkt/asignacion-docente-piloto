@@ -75,47 +75,66 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
     "select id from profesores where lower(nombre)=lower($1) or slug=$2", [nombre, slug]);
   if (dup.length) return { error: `Ya existe un docente con ese nombre (o slug "${slug}").` };
 
-  let profesorId: number;
+  // El CV se lee con Claude ANTES de abrir la transacción: es una llamada externa lenta
+  // y no debe mantener tomada una conexión del pooler. Si falla, no se crea nada.
+  let cv: Awaited<ReturnType<typeof leerCV>> | null = null;
   if (camino === "cv") {
-    // Procesa el CV (1 llamada a Claude). Si falla, NO se crea el docente.
-    let res;
     try {
-      res = await leerCV(pdf!, nombre);
+      cv = await leerCV(pdf!, nombre);
     } catch (e) {
       return { error: `No se pudo leer el CV: ${e instanceof Error ? e.message : "error desconocido"}` };
     }
-    const [prof] = await q<{ id: number }>(
-      `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, area_cv, anios_experiencia, cv_archivo, coordinador)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
-      [nombre, slug, res.perfil.licenciatura || licenciatura, res.perfil.maestria ?? maestria,
-       doctorado, res.perfil.area_principal ?? null, res.perfil.anios_experiencia ?? anios, `${slug}.pdf`, coordinador]);
-    profesorId = prof.id;
-    await q(`insert into cv_competencias (profesor_id, payload, modelo) values ($1,$2,$3)`,
-      [profesorId, res.perfil, res.modelo]);
-    for (const c of res.candidaturas) {
-      await q(
-        `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
-         values ($1,$2,'cv',$3,$4)
-         on conflict (profesor_id, materia_id, fuente) do nothing`,
-        [profesorId, c.materia_id, c.puntaje, c.razon]);
-    }
-  } else {
-    const [prof] = await q<{ id: number }>(
-      `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, anios_experiencia, coordinador)
-       values ($1,$2,$3,$4,$5,$6,$7) returning id`,
-      [nombre, slug, licenciatura, maestria, doctorado, anios, coordinador]);
-    profesorId = prof.id;
-    // Materias ya impartidas = señal más fuerte (+40), igual que el historial de mayo.
-    for (const mid of materiaIds) {
-      await q(
-        `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
-         values ($1,$2,'historial',40,'Marcado por coordinación: ya impartió esta materia')
-         on conflict (profesor_id, materia_id, fuente) do nothing`,
-        [profesorId, mid]);
-    }
   }
 
-  await recalcularAlertas();   // sus nuevas candidaturas pueden resolver un "sin_candidato" existente
+  // Toda la escritura en UNA transacción: docente + competencias + candidaturas + alertas.
+  // O se crea el docente completo y coherente, o no se crea nada (no quedan registros a medias).
+  let profesorId: number;
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    if (cv) {
+      const { rows: [prof] } = await client.query<{ id: number }>(
+        `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, area_cv, anios_experiencia, cv_archivo, coordinador)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+        [nombre, slug, cv.perfil.licenciatura || licenciatura, cv.perfil.maestria ?? maestria,
+         doctorado, cv.perfil.area_principal ?? null, cv.perfil.anios_experiencia ?? anios, `${slug}.pdf`, coordinador]);
+      profesorId = prof.id;
+      await client.query(`insert into cv_competencias (profesor_id, payload, modelo) values ($1,$2,$3)`,
+        [profesorId, cv.perfil, cv.modelo]);
+      for (const c of cv.candidaturas) {
+        await client.query(
+          `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
+           values ($1,$2,'cv',$3,$4)
+           on conflict (profesor_id, materia_id, fuente) do nothing`,
+          [profesorId, c.materia_id, c.puntaje, c.razon]);
+      }
+    } else {
+      const { rows: [prof] } = await client.query<{ id: number }>(
+        `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, anios_experiencia, coordinador)
+         values ($1,$2,$3,$4,$5,$6,$7) returning id`,
+        [nombre, slug, licenciatura, maestria, doctorado, anios, coordinador]);
+      profesorId = prof.id;
+      // Materias ya impartidas = señal más fuerte (+40), igual que el historial de mayo.
+      for (const mid of materiaIds) {
+        await client.query(
+          `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
+           values ($1,$2,'historial',40,'Marcado por coordinación: ya impartió esta materia')
+           on conflict (profesor_id, materia_id, fuente) do nothing`,
+          [profesorId, mid]);
+      }
+    }
+    // Recálculo de alertas en la MISMA transacción: sus nuevas candidaturas pueden resolver
+    // un "sin_candidato" existente. Una sola foto coherente del estado final.
+    await recomputarAlertas((sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows));
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    return { error: `No se pudo guardar el docente: ${e instanceof Error ? e.message : "error desconocido"}` };
+  } finally {
+    client.release();
+  }
+
   revalidatePath("/profesores");
   revalidatePath("/alertas");
   revalidatePath("/");
@@ -175,7 +194,8 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
 // Confirma la sugerencia automática tal cual (la "acepta" coordinación).
 // Solo cambia el estado (sugerida→confirmada), no el docente, así que el diagnóstico no cambia.
 export async function confirmar(slotId: number) {
-  await q("update asignaciones set estado='confirmada', automatica=false where slot_id=$1", [slotId]);
+  // Candado de integridad (no solo UI): no se puede "confirmar" una clase sin docente.
+  await q("update asignaciones set estado='confirmada', automatica=false where slot_id=$1 and profesor_id is not null", [slotId]);
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
   revalidatePath("/");
@@ -442,7 +462,13 @@ const CICLO_SEPT = "2026-2027-1";   // ciclo a asignar (septiembre); el historia
 const limpiarHora = (h: string) => {
   const t = h.trim();
   if (!t) return null;
-  return /^\d{1,2}:\d{2}$/.test(t) ? t : null;   // 'HH:MM' o nada
+  const m = t.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Number(m[1]), mm = Number(m[2]);
+  if (hh > 23 || mm > 59) return null;                 // hora fuera de rango
+  // Siempre 'HH:MM' con cero a la izquierda: así la comparación textual de horarios
+  // (detección de choques) coincide con el orden cronológico ("09:00" < "10:00").
+  return `${String(hh).padStart(2, "0")}:${m[2]}`;
 };
 
 // Edita día y horario de una materia por grupo. NO re-corre el motor (no reasigna docentes),
