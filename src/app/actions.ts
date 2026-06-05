@@ -487,7 +487,31 @@ export async function editarHorario(slotId: number, fd: FormData) {
 
 // Elimina una materia por grupo (ej. "NO SE APERTURA"). Cascada borra su asignación y alertas.
 export async function eliminarSlot(slotId: number) {
+  // Recordamos a qué materia/grupo apuntaba ANTES de borrar la clase, para limpiar huérfanos.
+  const [ref] = await q<{ materia_id: number | null; grupo_id: number | null }>(
+    "select materia_id, grupo_id from slots where id=$1 and es_historial=false", [slotId]);
   await q("delete from slots where id=$1 and es_historial=false", [slotId]);
+
+  // Limpieza de huérfanos: si tras borrar la clase ya nadie usa la materia/grupo, los quitamos
+  // para que no inflen el catálogo ni los conteos. Condiciones de seguridad:
+  //  - Materia: borrar SOLO si NINGÚN slot la usa (incluye historial de mayo) Y no tiene
+  //    candidaturas (materia_candidatos.materia_id es ON DELETE CASCADE: borrarla arrastraría
+  //    el "este docente puede darla", dato que queremos conservar).
+  //  - Grupo: borrar SOLO si NINGÚN slot lo usa.
+  if (ref?.materia_id != null) {
+    await q(
+      `delete from materias m where m.id=$1
+         and not exists (select 1 from slots s where s.materia_id=m.id)
+         and not exists (select 1 from materia_candidatos mc where mc.materia_id=m.id)`,
+      [ref.materia_id]);
+  }
+  if (ref?.grupo_id != null) {
+    await q(
+      `delete from grupos g where g.id=$1
+         and not exists (select 1 from slots s where s.grupo_id=g.id)`,
+      [ref.grupo_id]);
+  }
+
   await recalcularAlertas();   // al desaparecer la clase, se recalcula el diagnóstico del resto
   revalidatePath("/asignacion");
   revalidatePath("/alertas");
