@@ -39,6 +39,9 @@ respaldo_*.json
 *.bak-*
 scripts/_audit*.mjs
 
+# herramientas locales (config del servidor de previsualización, etc.)
+.claude/
+
 # vercel
 .vercel
 
