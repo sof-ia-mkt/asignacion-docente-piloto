@@ -199,10 +199,21 @@ export async function recomputarAlertas(query) {
   await query("select pg_advisory_xact_lock(4928134751)", []);
   const alertas = await calcularAlertas(query);
   await query("delete from alertas", []);
-  for (const al of alertas) {
+  // Inserta TODAS las alertas en lotes multi-fila, no una por una. Con ~440 alertas, un
+  // insert por fila son ~440 viajes de ida y vuelta al pooler remoto (~16 s, suficiente para
+  // que la función serverless se corte en producción). Por lotes son 1-2 viajes (~100 ms).
+  const LOTE = 500;
+  for (let i = 0; i < alertas.length; i += LOTE) {
+    const trozo = alertas.slice(i, i + LOTE);
+    const params = [];
+    const filas = trozo.map((al) => {
+      const b = params.length;
+      params.push(al.tipo, al.severidad, al.slot_id, al.slot_id_2, al.profesor_id, al.detalle);
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6})`;
+    });
     await query(
-      `insert into alertas (tipo, severidad, slot_id, slot_id_2, profesor_id, detalle) values ($1,$2,$3,$4,$5,$6)`,
-      [al.tipo, al.severidad, al.slot_id, al.slot_id_2, al.profesor_id, al.detalle]);
+      `insert into alertas (tipo, severidad, slot_id, slot_id_2, profesor_id, detalle) values ${filas.join(",")}`,
+      params);
   }
   const porTipo = {};
   for (const al of alertas) porTipo[al.tipo] = (porTipo[al.tipo] || 0) + 1;
