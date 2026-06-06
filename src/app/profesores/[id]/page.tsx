@@ -48,9 +48,10 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
   const afinidad = todas.filter((c) => c.puntaje < 25);
   const disponibles = todas.filter((c) => !c.yaLaDa).length;
 
-  // Correo pregrabado (mailto): abre el cliente de correo del coordinador con destinatario,
-  // asunto y cuerpo ya escritos (resumen de materias + horas). La app NO envía: el coordinador
-  // revisa y da "Enviar" desde su propia cuenta institucional. El botón se deshabilita sin correo.
+  // Correo pregrabado (Gmail): abre una ventana de REDACCIÓN de Gmail en pestaña nueva, con
+  // destinatario, asunto y cuerpo ya escritos (resumen de materias + horas). La app NO envía:
+  // el coordinador lo revisa, adjunta el PDF y da "Enviar" desde su propia cuenta de Gmail.
+  // El botón se deshabilita si el docente no tiene correo.
   const aMin = (h: string | null) => {
     if (!h) return null;
     const [hh, mm] = h.split(":").map(Number);
@@ -83,8 +84,10 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
     "Coordinación Académica — CENYCA",
     "IBERO Tijuana",
   ].join("\r\n");
-  const mailtoHref = prof.correo
-    ? `mailto:${encodeURIComponent(prof.correo)}?subject=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
+  // Gmail compose: se abre en mail.google.com con la cuenta de coordinación que el usuario
+  // tenga abierta, mostrando el borrador para revisarlo antes de enviar.
+  const correoHref = prof.correo
+    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(prof.correo)}&su=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
     : null;
 
   const fechaCorta = (s: string) => {
@@ -113,7 +116,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
           <PropuestaAcciones
             profesorId={prof.id}
             estado={prof.propuesta_estado}
-            mailtoHref={mailtoHref}
+            correoHref={correoHref}
             nombre={prof.nombre}
           />
           <ExportButtons tipo="profesor" params={{ id: prof.id }} />

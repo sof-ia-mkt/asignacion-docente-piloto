@@ -31,6 +31,19 @@ export default async function SlotPage({
   // hasta capturar el horario (si no, no podríamos verificar el empalme del docente).
   const esAsinc = esAsincronica(slot.modalidad);
   const requiereHorario = sinHorario && !esAsinc;
+  // Texto de horario para el cuadro de confirmación al asignar un docente.
+  const horarioTxt = esAsinc
+    ? "en línea, sin horario fijo"
+    : sinHorario
+      ? "sin horario"
+      : `${slot.dia} ${slot.hora_inicio}-${slot.hora_fin}`;
+  // Mensaje del cuadro de confirmación: pide revisar dos veces antes de asignar.
+  const confirmAsignar = (nombre: string) =>
+    `¿Asignar a ${nombre} a esta clase?\n\n` +
+    `• Materia: ${slot.materia ?? "—"}\n` +
+    `• Grupo: ${slot.grupo ?? "—"}${slot.plantel ? ` · ${plantelCorto(slot.plantel)}` : ""}\n` +
+    `• Horario: ${horarioTxt}\n\n` +
+    `Revisa que sea el docente correcto antes de confirmar.`;
   // Regla dura: nadie en dos clases a la misma hora. Un candidato con choque queda bloqueado.
   const bloqueado = (choque: string | null) => requiereHorario || !!choque;
 
@@ -254,7 +267,11 @@ export default async function SlotPage({
                       <span className="text-xs text-red-700" title={`Ocupado: ya da "${c.choque}" a esta misma hora. No se puede empalmar.`}>ocupado</span>
                     ) : (
                       <form action={asignar.bind(null, slotId, c.profesor_id, c.puntaje, c.razon)}>
-                        <button className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs">Asignar</button>
+                        <ConfirmButton
+                          message={confirmAsignar(c.nombre)}
+                          className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-800">
+                          Asignar
+                        </ConfirmButton>
                       </form>
                     )}
                   </td>
@@ -320,7 +337,11 @@ export default async function SlotPage({
                         <span className="text-xs text-red-700" title={`Ocupado: ya da "${p.choque}" a esta misma hora. No se puede empalmar.`}>ocupado</span>
                       ) : (
                         <form action={asignar.bind(null, slotId, p.id, 0, "Asignación manual por coordinación")}>
-                          <button className="px-2.5 py-1 rounded-md border border-slate-300 text-slate-700 text-xs hover:bg-slate-50">Asignar a mano</button>
+                          <ConfirmButton
+                            message={confirmAsignar(p.nombre)}
+                            className="px-2.5 py-1 rounded-md border border-slate-300 text-slate-700 text-xs hover:bg-slate-50">
+                            Asignar a mano
+                          </ConfirmButton>
                         </form>
                       )}
                     </td>
