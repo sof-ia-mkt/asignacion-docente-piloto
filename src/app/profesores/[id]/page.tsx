@@ -72,7 +72,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
   const cuerpoCorreo = [
     `Estimado/a ${prof.nombre}:`,
     "",
-    `Por medio de la presente, la Coordinación Académica de CENYCA (IBERO Tijuana) le comparte su Propuesta Académica para el periodo ${cicloLabel(ciclo)}. A continuación, las materias y horarios asignados:`,
+    `Por medio de la presente, la Coordinación Académica de CENYCA le comparte su Propuesta Académica para el periodo ${cicloLabel(ciclo)}. A continuación, las materias y horarios asignados:`,
     "",
     ...lineasMaterias,
     "",
@@ -82,12 +82,13 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
     "",
     "Atentamente,",
     "Coordinación Académica — CENYCA",
-    "IBERO Tijuana",
   ].join("\r\n");
-  // Gmail compose: se abre en mail.google.com con la cuenta de coordinación que el usuario
-  // tenga abierta, mostrando el borrador para revisarlo antes de enviar.
+  // Gmail compose: se abre en mail.google.com mostrando el borrador para revisarlo antes de
+  // enviar. authuser fija la cuenta de coordinación (desde la que SIEMPRE se envían las
+  // propuestas), por si el usuario tiene varias sesiones de Google abiertas.
+  const CORREO_COORDINACION = "coordinacion.academica.cb@cenyca.edu.mx";
   const correoHref = prof.correo
-    ? `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(prof.correo)}&su=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
+    ? `https://mail.google.com/mail/?view=cm&fs=1&authuser=${encodeURIComponent(CORREO_COORDINACION)}&to=${encodeURIComponent(prof.correo)}&su=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
     : null;
 
   const fechaCorta = (s: string) => {

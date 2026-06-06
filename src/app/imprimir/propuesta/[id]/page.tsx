@@ -1,5 +1,5 @@
 // Propuesta Académica (PDF por docente).
-// /imprimir/propuesta/<id>  ->  documento limpio con membrete (logo + IBERO Tijuana / CENYCA),
+// /imprimir/propuesta/<id>  ->  documento limpio con membrete (logo + CENYCA),
 // la tabla de materias/horarios que el docente impartirá en septiembre y los totales
 // (materias + horas/semana). Coordinación lo descarga ("Guardar como PDF") y lo envía por
 // correo. La app NO manda correo: solo genera el documento imprimible.
@@ -30,7 +30,7 @@ export default async function PropuestaPage({ params }: { params: Promise<{ id: 
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-cenyca-dark.png" alt="CENYCA" className="h-12 w-auto" />
           <div className="text-right text-xs text-slate-500 leading-tight">
-            <div className="font-semibold text-slate-700">IBERO Tijuana · CENYCA</div>
+            <div className="font-semibold text-slate-700">CENYCA</div>
             <div>Coordinación Académica</div>
             <div>Generado el {fecha}</div>
           </div>

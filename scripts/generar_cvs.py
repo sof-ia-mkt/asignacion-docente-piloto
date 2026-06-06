@@ -24,7 +24,7 @@ META_OUT = BASE / "db" / "seed_data" / "cvs_meta.json"
 random.seed(42)
 
 UNIS = ["Universidad Autónoma de Baja California", "CETYS Universidad",
-        "Instituto Tecnológico de Tijuana", "Universidad Iberoamericana",
+        "Instituto Tecnológico de Tijuana", "Universidad Xochicalco",
         "Tecnológico de Monterrey", "Universidad de Sonora"]
 EMPRESAS_ING = ["Smiths Interconnect", "Skyworks Solutions", "Plantronics (Poly)",
                 "Hyundai Translead", "Toyota Baja California", "Honeywell Aerospace",
