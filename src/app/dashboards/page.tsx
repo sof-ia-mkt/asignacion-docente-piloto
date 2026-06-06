@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDashCobertura, getDashDocentes, getDashRiesgos, getDashRecomendacion } from "@/lib/queries";
 import { Card, Panel } from "@/lib/ui";
 import { Donut } from "@/lib/charts";
+import { ExportButtons } from "@/lib/export-buttons";
 
 export default async function DashboardsHome({
   searchParams,
@@ -18,9 +19,12 @@ export default async function DashboardsHome({
 
   return (
     <div className="space-y-5">
-      <p className="text-sm text-slate-500">
-        Vista general del ciclo de septiembre. Entra a cada monitor para el detalle.
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">
+          Vista general del ciclo de septiembre. Entra a cada monitor para el detalle.
+        </p>
+        <ExportButtons tipo="dashboard" params={{ vista: "resumen", plantel }} />
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Clases de septiembre" value={e.total} hint="por asignar y confirmar" />

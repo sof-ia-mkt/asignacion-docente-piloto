@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getResumen } from "@/lib/queries";
 import { Card, Sev } from "@/lib/ui";
+import { ExportButtons } from "@/lib/export-buttons";
 import { AlertasPorTipo } from "./alertas-por-tipo";
 
 export default async function Home() {
@@ -11,11 +12,14 @@ export default async function Home() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Panel de coordinación</h1>
-        <p className="text-sm text-slate-500">
-          Cuatrimestre a asignar (septiembre), recomendado a partir del historial de mayo y los CV.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Panel de coordinación</h1>
+          <p className="text-sm text-slate-500">
+            Cuatrimestre a asignar (septiembre), recomendado a partir del historial de mayo y los CV.
+          </p>
+        </div>
+        <ExportButtons tipo="dashboard" params={{ vista: "resumen" }} className="shrink-0" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

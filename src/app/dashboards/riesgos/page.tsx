@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getDashRiesgos } from "@/lib/queries";
 import { Card, Panel, tipoLabel } from "@/lib/ui";
 import { CBars, HBars, COLORS } from "@/lib/charts";
+import { ExportButtons } from "@/lib/export-buttons";
 
 const SEV_COLOR: Record<string, string> = { alta: COLORS.red, media: COLORS.amber, baja: COLORS.slate };
 
@@ -26,6 +27,9 @@ export default async function RiesgosPage({
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <ExportButtons tipo="dashboard" params={{ vista: "riesgos", plantel }} />
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Alertas totales" value={total} />
         <Card title="Prioridad alta" value={altas} />

@@ -4,6 +4,7 @@ import { getProfesor } from "@/lib/queries";
 import { Estado, TipoClase, plantelCorto } from "@/lib/ui";
 import { quitarAsignacion, eliminarDocente } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { ExportButtons } from "@/lib/export-buttons";
 import { MateriasAsignables, type GrupoAbierto } from "./materias-asignables";
 
 export default async function ProfesorPage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,7 +56,10 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
 
   return (
     <div className="space-y-5">
-      <Link href="/profesores" className="text-sm text-blue-700 hover:underline">← Profesores</Link>
+      <div className="flex items-center justify-between gap-3">
+        <Link href="/profesores" className="text-sm text-blue-700 hover:underline">← Profesores</Link>
+        <ExportButtons tipo="profesor" params={{ id: prof.id }} />
+      </div>
 
       {/* Encabezado: identidad y formación, compacto */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">

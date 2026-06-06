@@ -3,6 +3,7 @@ import { getSlotsSeptiembre, getPlanteles, contarSugeridas, getFacetasSlots, get
 import { Estado, TipoClase, planCorto, plantelCorto } from "@/lib/ui";
 import { confirmarSugeridas } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { ExportButtons } from "@/lib/export-buttons";
 import { AsignacionFiltros } from "./filtros";
 
 export default async function AsignacionPage({
@@ -50,6 +51,7 @@ export default async function AsignacionPage({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri, tipo }} />
           {sugeridas > 0 && (
             <form action={confirmarSugeridas.bind(null, plantel || undefined)}>
               <ConfirmButton

@@ -20,6 +20,7 @@ const nav = [
   { href: "/aulas", label: "Aulas" },
   { href: "/asignacion", label: "Asignación" },
   { href: "/alertas", label: "Alertas" },
+  { href: "/historial", label: "Historial" },
 ];
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

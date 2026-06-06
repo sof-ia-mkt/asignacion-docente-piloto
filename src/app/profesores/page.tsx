@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getProfesores, getProfesoresConteo } from "@/lib/queries";
 import { plantelCorto, COORDINADORES, esCoordinador } from "@/lib/ui";
+import { ExportButtons } from "@/lib/export-buttons";
 
 const FILTROS = [
   { v: "", label: "Todos" },
@@ -40,10 +41,13 @@ export default async function ProfesoresPage({
             {conteo.total} docentes en total · {conteo.con_cv} con CV leído · {sinCv} solo con historial.
           </p>
         </div>
-        <Link href="/profesores/nuevo"
-          className="shrink-0 px-3 py-2 rounded-md bg-slate-900 text-white text-sm">
-          + Nuevo docente
-        </Link>
+        <div className="flex items-center gap-2 shrink-0">
+          <ExportButtons tipo="profesores" params={{ cv, coord }} />
+          <Link href="/profesores/nuevo"
+            className="px-3 py-2 rounded-md bg-slate-900 text-white text-sm">
+            + Nuevo docente
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 items-center">

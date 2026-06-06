@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getAlertas, getAlertasResumen, getPlanteles } from "@/lib/queries";
 import { Sev, tipoLabel, plantelCorto, ALERTA_INFO } from "@/lib/ui";
 import { recalcularAlertasManual } from "@/app/actions";
+import { ExportButtons } from "@/lib/export-buttons";
 
 // Orden de las tarjetas: lo accionable primero, "Sin aula" al final.
 const TIPOS_ORDEN = ["sin_candidato", "choque_horario", "traslado_plantel", "sobrecarga", "docente_repetido", "sin_aula"];
@@ -55,12 +56,15 @@ export default async function AlertasPage({
             {" · "}{totalScope} en total{plantel ? ` en ${plantelCorto(plantel)}` : ""}.
           </p>
         </div>
-        {/* Las alertas se recalculan solas tras cada edición; este botón es por si quieres forzar el refresco. */}
-        <form action={recalcularAlertasManual}>
-          <button className="shrink-0 px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">
-            Recalcular alertas
-          </button>
-        </form>
+        <div className="flex items-center gap-2 shrink-0">
+          <ExportButtons tipo="alertas" params={{ tipo, severidad: sevParam, plantel }} />
+          {/* Las alertas se recalculan solas tras cada edición; este botón es por si quieres forzar el refresco. */}
+          <form action={recalcularAlertasManual}>
+            <button className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">
+              Recalcular alertas
+            </button>
+          </form>
+        </div>
       </div>
 
       {/* Tarjetas por tipo: clic = ver todas las de ese tipo */}

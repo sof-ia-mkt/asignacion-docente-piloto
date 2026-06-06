@@ -2,6 +2,7 @@ import { getAulas } from "@/lib/queries";
 import { Card, Panel } from "@/lib/ui";
 import { editarAula, eliminarAula } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { ExportButtons } from "@/lib/export-buttons";
 import { CrearAulaForm } from "./crear-form";
 
 export default async function AulasPage() {
@@ -71,9 +72,12 @@ export default async function AulasPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">Aulas</h1>
-        <p className="text-sm text-slate-500">Catálogo de salones del plantel. Edita tipo y capacidad, o agrega y borra salones.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900">Aulas</h1>
+          <p className="text-sm text-slate-500">Catálogo de salones del plantel. Edita tipo y capacidad, o agrega y borra salones.</p>
+        </div>
+        <ExportButtons tipo="aulas" className="shrink-0" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

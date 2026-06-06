@@ -56,6 +56,34 @@ const TIPO_LABEL: Record<string, string> = {
 };
 export const tipoLabel = (t: string) => TIPO_LABEL[t] ?? t;
 
+// Etiqueta legible de la entidad tocada en la bitácora (historial de modificaciones).
+const ENTIDAD_LABEL: Record<string, string> = {
+  docente: "Docente",
+  clase: "Clase",
+  aula: "Aula",
+  asignacion: "Asignación",
+  candidatura: "Candidatura",
+  cv: "CV",
+};
+export const entidadLabel = (e: string) => ENTIDAD_LABEL[e] ?? e;
+
+// Color de pastilla por entidad, para que el historial se lea de un vistazo.
+const ENTIDAD_COLOR: Record<string, string> = {
+  docente: "bg-blue-100 text-blue-800 border-blue-200",
+  clase: "bg-violet-100 text-violet-800 border-violet-200",
+  aula: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  asignacion: "bg-amber-100 text-amber-800 border-amber-200",
+  candidatura: "bg-sky-100 text-sky-800 border-sky-200",
+  cv: "bg-rose-100 text-rose-800 border-rose-200",
+};
+export function EntidadBadge({ e }: { e: string }) {
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${ENTIDAD_COLOR[e] ?? SEV.baja}`}>
+      {entidadLabel(e)}
+    </span>
+  );
+}
+
 // Explicación legible de cada tipo de alerta, para coordinación. FUENTE ÚNICA: la usan
 // el panel del inicio (acordeón) y la página de Alertas; no debe duplicarse en ningún otro lado.
 //   idea    = titular de una línea (el "de qué va")

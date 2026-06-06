@@ -512,3 +512,50 @@ export async function getDashRecomendacion(plantel?: string) {
             (select count(*) from profesores where nombre <> all($1))::int asignables`, [PLACEHOLDERS]);
   return { origen, calidad, cv };
 }
+
+// ---------- Bitácora / historial de modificaciones (Fase 1: solo lectura) ----------
+
+export type BitacoraRow = {
+  id: number;
+  creado_en: string;     // ISO (timestamptz)
+  actor: string;
+  entidad: string;
+  entidad_id: number | null;
+  accion: string;
+  descripcion: string;
+  tiene_snapshot: boolean;   // ¿guardó una foto estructurada? (necesario para poder deshacer)
+};
+
+export type BitacoraFiltro = { entidad?: string; accion?: string; q?: string; desde?: string; page?: number };
+
+// Lista paginada del historial, lo más reciente primero. Filtros opcionales por entidad,
+// acción, texto libre (en la descripción) y fecha mínima (desde, formato YYYY-MM-DD).
+export async function getBitacora(f: BitacoraFiltro = {}, limit = 100) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (f.entidad) { params.push(f.entidad); where.push(`entidad = $${params.length}`); }
+  if (f.accion) { params.push(f.accion); where.push(`accion = $${params.length}`); }
+  if (f.q) { params.push(`%${f.q}%`); where.push(`descripcion ilike $${params.length}`); }
+  if (f.desde) { params.push(f.desde); where.push(`creado_en >= $${params.length}`); }
+  const cond = where.length ? `where ${where.join(" and ")}` : "";
+  const page = Math.max(1, f.page ?? 1);
+  const offset = (page - 1) * limit;
+  params.push(limit); const pLimit = params.length;
+  params.push(offset); const pOffset = params.length;
+  const rows = await q<BitacoraRow>(
+    `select id, creado_en, actor, entidad, entidad_id, accion, descripcion,
+            jsonb_exists(coalesce(datos_antes, '{}'::jsonb), 'kind') as tiene_snapshot
+       from bitacora ${cond}
+      order by creado_en desc, id desc
+      limit $${pLimit} offset $${pOffset}`, params);
+  const [tot] = await q<{ n: number }>(
+    `select count(*)::int n from bitacora ${cond}`, params.slice(0, pLimit - 1));
+  const pages = Math.max(1, Math.ceil(tot.n / limit));
+  return { rows, total: tot.n, page, pages, limit };
+}
+
+// Conteo por entidad (para las pastillas/tarjetas de filtro de la pantalla de historial).
+export async function getBitacoraResumen() {
+  return q<{ entidad: string; n: number }>(
+    "select entidad, count(*)::int n from bitacora group by entidad order by n desc");
+}

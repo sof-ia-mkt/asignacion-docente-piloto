@@ -16,3 +16,37 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* Impresión / "Guardar como PDF": quita el cromo de la app y deja solo el contenido.
+   Aplica a cualquier pantalla, pero sobre todo a /imprimir/<tipo> (vista limpia). */
+@media print {
+  /* Oculta encabezado, pie y todo lo marcado como no imprimible (filtros, botones). */
+  header,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+  }
+  /* Aprovecha todo el ancho de la hoja. */
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  /* Respeta los colores de fondo de los encabezados de tabla al imprimir. */
+  thead th {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Evita cortar filas a la mitad entre páginas. */
+  tr,
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}

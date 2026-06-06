@@ -1,6 +1,7 @@
 import { getDashDocentes } from "@/lib/queries";
 import { Card, Panel } from "@/lib/ui";
 import { CBars, HBars, COLORS } from "@/lib/charts";
+import { ExportButtons } from "@/lib/export-buttons";
 
 export default async function DocentesDashPage({
   searchParams,
@@ -16,6 +17,9 @@ export default async function DocentesDashPage({
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <ExportButtons tipo="dashboard" params={{ vista: "docentes", plantel }} />
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Docentes con carga" value={resumen.docentes} />
         <Card title="Carga promedio" value={resumen.avgc} hint="materias / docente" />

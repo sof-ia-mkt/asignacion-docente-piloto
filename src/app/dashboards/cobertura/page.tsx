@@ -1,6 +1,7 @@
 import { getDashCobertura } from "@/lib/queries";
 import { Card, Panel } from "@/lib/ui";
 import { Donut, GroupedBars, COLORS } from "@/lib/charts";
+import { ExportButtons } from "@/lib/export-buttons";
 
 export default async function CoberturaPage({
   searchParams,
@@ -16,6 +17,9 @@ export default async function CoberturaPage({
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <ExportButtons tipo="dashboard" params={{ vista: "cobertura", plantel }} />
+      </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Total de clases" value={e.total} />
         <Card title="Con docente asignado" value={`${e.asignados}`} hint={`${pct}% · falta confirmar`} />
