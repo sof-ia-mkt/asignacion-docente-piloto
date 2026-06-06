@@ -55,9 +55,9 @@ export default async function AsignacionPage({
           {sugeridas > 0 && (
             <form action={confirmarSugeridas.bind(null, plantel || undefined)}>
               <ConfirmButton
-                message={`¿Confirmar las ${sugeridas} sugerencias del sistema en ${ambito}? Quedarán como "Confirmada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
+                message={`¿Aceptar las ${sugeridas} sugerencias del sistema en ${ambito}? Quedarán como "Asignada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
                 className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm whitespace-nowrap hover:bg-green-700">
-                Confirmar {sugeridas} sugerida{sugeridas === 1 ? "" : "s"}
+                Aceptar {sugeridas} sugerida{sugeridas === 1 ? "" : "s"}
               </ConfirmButton>
             </form>
           )}

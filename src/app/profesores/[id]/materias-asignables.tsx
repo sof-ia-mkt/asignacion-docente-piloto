@@ -163,7 +163,7 @@ export function MateriasAsignables({
           </div>
           <div className="divide-y divide-blue-100">{sel.grupos.map(grupo(sel))}</div>
           <p className="px-3 py-2 text-[11px] text-slate-400">
-            Al asignar queda como decisión de coordinación (confirmada). Las clases en
+            Al asignar queda como decisión de coordinación (Asignada). Las clases en
             <span className="text-red-700"> rojo</span> chocan con otra que ya tiene a esa hora.
           </p>
         </div>

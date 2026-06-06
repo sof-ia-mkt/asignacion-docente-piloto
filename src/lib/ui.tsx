@@ -32,8 +32,10 @@ const EST: Record<string, string> = {
   sugerida: "bg-blue-100 text-blue-800 border-blue-200",
   rechazada: "bg-slate-100 text-slate-600 border-slate-200",
 };
+// "confirmada" es el estado por-MATERIA (hay un docente puesto en esa clase). Se muestra como
+// "Asignada": la palabra "Confirmada" queda reservada para la PROPUESTA del docente (ver abajo).
 const EST_LABEL: Record<string, string> = {
-  confirmada: "Confirmada", sugerida: "Sugerida", rechazada: "Sin asignar",
+  confirmada: "Asignada", sugerida: "Sugerida", rechazada: "Sin asignar",
 };
 
 export function Estado({ e }: { e: string | null }) {
@@ -41,6 +43,27 @@ export function Estado({ e }: { e: string | null }) {
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${EST[e] ?? EST.rechazada}`}>
       {EST_LABEL[e] ?? e}
+    </span>
+  );
+}
+
+// Estado de la PROPUESTA del docente (por docente, no por materia): borrador → enviada → confirmada.
+// "Confirmada" aquí SÍ significa que el docente aceptó y coordinación lo confirmó a mano.
+const PROP: Record<string, string> = {
+  borrador: "bg-slate-100 text-slate-600 border-slate-200",
+  enviada: "bg-amber-100 text-amber-800 border-amber-200",
+  confirmada: "bg-green-100 text-green-800 border-green-200",
+};
+const PROP_LABEL: Record<string, string> = {
+  borrador: "Borrador", enviada: "Propuesta enviada", confirmada: "Confirmada",
+};
+export const propuestaLabel = (e: string | null | undefined) => PROP_LABEL[e ?? "borrador"] ?? "Borrador";
+
+export function PropuestaEstado({ e }: { e: string | null | undefined }) {
+  const k = e ?? "borrador";
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${PROP[k] ?? PROP.borrador}`}>
+      {PROP_LABEL[k] ?? "Borrador"}
     </span>
   );
 }
@@ -139,6 +162,23 @@ export function planCorto(nombre: string | null): string {
     // (á é í ó ú ñ), así no parte "mecatrónica" en "MecatróNica".
     .replace(/(^|\s)(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase())
     .replace(/\bIng\.\s*/i, "Ing. ");
+}
+
+// Etiqueta legible de un ciclo ("2026-2027-1" -> "Septiembre–Diciembre 2026").
+// El sufijo marca el cuatrimestre del año lectivo: 1 = sep-dic (primer año),
+// 2 = ene-abr (segundo año), 3 = may-ago (segundo año).
+export function cicloLabel(ciclo: string | null): string {
+  if (!ciclo) return "—";
+  const m = ciclo.match(/^(\d{4})-(\d{4})-(\d)$/);
+  if (!m) return ciclo;
+  const [, a1, a2, suf] = m;
+  const periodos: Record<string, [string, string]> = {
+    "1": ["Septiembre–Diciembre", a1],
+    "2": ["Enero–Abril", a2],
+    "3": ["Mayo–Agosto", a2],
+  };
+  const p = periodos[suf];
+  return p ? `${p[0]} ${p[1]}` : ciclo;
 }
 
 // Nombre corto y legible del plantel para chips/columnas.

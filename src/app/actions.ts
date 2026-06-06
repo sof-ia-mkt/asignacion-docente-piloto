@@ -10,7 +10,7 @@ import { recomputarAlertas } from "@/lib/alertas-core.mjs";
 import { registrarCambio } from "@/lib/audit";
 import {
   aplicarReversion,
-  snapAsignacion, snapSlotAula, snapSlotHorario, snapAula, snapDocente, snapCandidatura,
+  snapAsignacion, snapSlotAula, snapSlotHorario, snapAula, snapDocente, snapCandidatura, snapPropuesta,
 } from "@/lib/revertir";
 
 // Recalcula las alertas desde el ESTADO ACTUAL (diagnóstico; NO reasigna docentes ni aulas).
@@ -42,6 +42,9 @@ const slugify = (s: string) =>
   s.normalize("NFKD").replace(/[̀-ͯ]/g, "")
     .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
 
+// Validación mínima de correo (no exhaustiva; solo evita capturas claramente mal formadas).
+const esCorreoValido = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+
 export type CrearDocenteState = { error?: string };
 
 // Alta de docente. Camino 'manual' = marca materias ya impartidas (+40). Camino 'cv' = Claude lee el PDF.
@@ -52,12 +55,15 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
   const maestria = String(fd.get("maestria") ?? "").trim() || null;
   const doctorado = String(fd.get("doctorado") ?? "").trim() || null;
   const coordinador = String(fd.get("coordinador") ?? "").trim();
+  const correo = String(fd.get("correo") ?? "").trim() || null;
   const camino = String(fd.get("camino") ?? "");
 
   if (!nombre || !licenciatura || !aniosRaw)
     return { error: "Faltan campos obligatorios: nombre, licenciatura y años de experiencia." };
   if (!coordinador) return { error: "Indica qué coordinador(a) académico lo va a asignar." };
   if (!esCoordinador(coordinador)) return { error: "Coordinador(a) no válido." };
+  if (!correo) return { error: "El correo del docente es obligatorio: es a donde se le envía su propuesta." };
+  if (!esCorreoValido(correo)) return { error: "El correo no tiene un formato válido (ej. nombre@dominio.com)." };
   const anios = Number(aniosRaw);
   if (!Number.isFinite(anios) || anios < 0) return { error: "Años de experiencia debe ser un número válido." };
   if (camino !== "manual" && camino !== "cv") return { error: "Elige cómo definir sus materias: manual o por CV." };
@@ -99,10 +105,10 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
     await client.query("begin");
     if (cv) {
       const { rows: [prof] } = await client.query<{ id: number }>(
-        `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, area_cv, anios_experiencia, cv_archivo, coordinador)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9) returning id`,
+        `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, area_cv, anios_experiencia, cv_archivo, coordinador, correo)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
         [nombre, slug, cv.perfil.licenciatura || licenciatura, cv.perfil.maestria ?? maestria,
-         doctorado, cv.perfil.area_principal ?? null, cv.perfil.anios_experiencia ?? anios, `${slug}.pdf`, coordinador]);
+         doctorado, cv.perfil.area_principal ?? null, cv.perfil.anios_experiencia ?? anios, `${slug}.pdf`, coordinador, correo]);
       profesorId = prof.id;
       await client.query(`insert into cv_competencias (profesor_id, payload, modelo) values ($1,$2,$3)`,
         [profesorId, cv.perfil, cv.modelo]);
@@ -115,9 +121,9 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
       }
     } else {
       const { rows: [prof] } = await client.query<{ id: number }>(
-        `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, anios_experiencia, coordinador)
-         values ($1,$2,$3,$4,$5,$6,$7) returning id`,
-        [nombre, slug, licenciatura, maestria, doctorado, anios, coordinador]);
+        `insert into profesores (nombre, slug, licenciatura, maestria, doctorado, anios_experiencia, coordinador, correo)
+         values ($1,$2,$3,$4,$5,$6,$7,$8) returning id`,
+        [nombre, slug, licenciatura, maestria, doctorado, anios, coordinador, correo]);
       profesorId = prof.id;
       // Materias ya impartidas = señal más fuerte (+40), igual que el historial de mayo.
       for (const mid of materiaIds) {
@@ -494,11 +500,13 @@ export async function editarDocente(
   const maestria = String(fd.get("maestria") ?? "").trim() || null;
   const doctorado = String(fd.get("doctorado") ?? "").trim() || null;
   const coordinador = String(fd.get("coordinador") ?? "").trim();
+  const correo = String(fd.get("correo") ?? "").trim() || null;
 
   if (!nombre || !licenciatura || !aniosRaw)
     return { error: "Faltan campos obligatorios: nombre, licenciatura y años de experiencia." };
   if (!coordinador) return { error: "Indica qué coordinador(a) académico lo va a asignar." };
   if (!esCoordinador(coordinador)) return { error: "Coordinador(a) no válido." };
+  if (correo && !esCorreoValido(correo)) return { error: "El correo no tiene un formato válido (ej. nombre@dominio.com)." };
   const anios = Number(aniosRaw);
   if (!Number.isFinite(anios) || anios < 0) return { error: "Años de experiencia debe ser un número válido." };
 
@@ -508,8 +516,8 @@ export async function editarDocente(
 
   const antes = await snapDocente(profesorId);   // foto de los datos previos (para deshacer)
   await q(
-    `update profesores set nombre=$1, licenciatura=$2, maestria=$3, doctorado=$4, anios_experiencia=$5, coordinador=$6 where id=$7`,
-    [nombre, licenciatura, maestria, doctorado, anios, coordinador, profesorId]);
+    `update profesores set nombre=$1, licenciatura=$2, maestria=$3, doctorado=$4, anios_experiencia=$5, coordinador=$6, correo=$7 where id=$8`,
+    [nombre, licenciatura, maestria, doctorado, anios, coordinador, correo, profesorId]);
   await registrarCambio({
     entidad: "docente",
     entidadId: profesorId,
@@ -521,6 +529,66 @@ export async function editarDocente(
   revalidatePath(`/profesores/${profesorId}`);
   revalidatePath("/profesores");
   redirect(`/profesores/${profesorId}`);
+}
+
+// ---- Ciclo de vida de la PROPUESTA (por docente): borrador → enviada → confirmada ----
+//
+// La propuesta es UNA por docente (el PDF y el correo son del docente completo), así que el
+// estado vive en `profesores`, no en cada asignación. Ambas transiciones son del coordinador
+// y quedan en la bitácora con foto antes/después (reversibles desde /historial).
+
+export type PropuestaResult = { ok: true } | { ok: false; error: string };
+
+// "Enviar por correo" la dispara: al mandar el PDF, la propuesta queda como ENVIADA.
+// Reenviar reinicia la confirmación (si ya estaba confirmada y se reenvía, vuelve a "enviada":
+// es una propuesta nueva que el docente debe volver a aceptar).
+export async function marcarPropuestaEnviada(profesorId: number): Promise<PropuestaResult> {
+  const [p] = await q<{ nombre: string; correo: string | null }>(
+    "select nombre, correo from profesores where id=$1", [profesorId]);
+  if (!p) return { ok: false, error: "No se encontró el docente." };
+  if (!p.correo) return { ok: false, error: "El docente no tiene correo: no se puede registrar el envío de su propuesta." };
+
+  const antes = await snapPropuesta(profesorId);
+  await q(
+    `update profesores set propuesta_estado='enviada', propuesta_enviada_en=now(), propuesta_confirmada_en=null where id=$1`,
+    [profesorId]);
+  await registrarCambio({
+    entidad: "docente",
+    entidadId: profesorId,
+    accion: "envió",
+    descripcion: `Envió la propuesta de "${p.nombre}" por correo (${p.correo})`,
+    antes,
+    despues: await snapPropuesta(profesorId),
+  });
+  revalidatePath(`/profesores/${profesorId}`);
+  revalidatePath("/profesores");
+  return { ok: true };
+}
+
+// "Confirmar propuesta": acto FORZOSO del coordinador. Candado de integridad (no solo UI):
+// solo se puede confirmar una propuesta que ya fue ENVIADA. Nunca es automática.
+export async function confirmarPropuesta(profesorId: number): Promise<PropuestaResult> {
+  const [p] = await q<{ nombre: string; propuesta_estado: string }>(
+    "select nombre, propuesta_estado from profesores where id=$1", [profesorId]);
+  if (!p) return { ok: false, error: "No se encontró el docente." };
+  if (p.propuesta_estado !== "enviada")
+    return { ok: false, error: "Solo se puede confirmar una propuesta que ya fue enviada al docente." };
+
+  const antes = await snapPropuesta(profesorId);
+  await q(
+    `update profesores set propuesta_estado='confirmada', propuesta_confirmada_en=now() where id=$1`,
+    [profesorId]);
+  await registrarCambio({
+    entidad: "docente",
+    entidadId: profesorId,
+    accion: "confirmó",
+    descripcion: `Confirmó la propuesta de "${p.nombre}" (el docente la aceptó)`,
+    antes,
+    despues: await snapPropuesta(profesorId),
+  });
+  revalidatePath(`/profesores/${profesorId}`);
+  revalidatePath("/profesores");
+  return { ok: true };
 }
 
 // Marca que el docente PUEDE dar una materia del catálogo (candidatura manual, +40 como el historial).

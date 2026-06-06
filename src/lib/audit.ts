@@ -25,6 +25,7 @@ export type AccionBitacora =
   | "asignó"
   | "quitó"
   | "confirmó"
+  | "envió"       // marcó la propuesta del docente como enviada por correo
   | "agregó"
   | "procesó"
   | "deshizo";   // Fase 2: revirtió un movimiento anterior (deja su propio rastro)

@@ -14,6 +14,7 @@ type Datos = {
   doctorado: string | null;
   anios_experiencia: number | null;
   coordinador: string | null;
+  correo: string | null;
 };
 
 export function EditarDocenteForm({ prof }: { prof: Datos }) {
@@ -45,12 +46,17 @@ export function EditarDocenteForm({ prof }: { prof: Datos }) {
           <label className={label}>Doctorado <span className="text-slate-400 font-normal">(opcional)</span></label>
           <input name="doctorado" defaultValue={prof.doctorado ?? ""} className={input} />
         </div>
-        <div className="md:col-span-2">
+        <div>
           <label className={label}>Coordinación académica * <span className="text-slate-400 font-normal">— quién lo va a asignar</span></label>
           <select name="coordinador" required defaultValue={prof.coordinador ?? ""} className={input}>
             <option value="" disabled>— Selecciona —</option>
             {COORDINADORES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+        </div>
+        <div>
+          <label className={label}>Correo del docente <span className="text-slate-400 font-normal">(para enviarle su propuesta)</span></label>
+          <input name="correo" type="email" defaultValue={prof.correo ?? ""} className={input}
+            placeholder="nombre@dominio.com" />
         </div>
       </div>
 

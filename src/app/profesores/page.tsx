@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getProfesores, getProfesoresConteo } from "@/lib/queries";
-import { plantelCorto, COORDINADORES, esCoordinador } from "@/lib/ui";
+import { COORDINADORES, esCoordinador } from "@/lib/ui";
 import { ExportButtons } from "@/lib/export-buttons";
+import { TablaProfesores } from "./tabla";
 
 const FILTROS = [
   { v: "", label: "Todos" },
@@ -64,55 +65,7 @@ export default async function ProfesoresPage({
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr className="text-left">
-              <th className="px-4 py-2 font-medium">Docente</th>
-              <th className="px-4 py-2 font-medium">Coordinación</th>
-              <th className="px-4 py-2 font-medium">CV</th>
-              <th className="px-4 py-2 font-medium">Plantel(es)</th>
-              <th className="px-4 py-2 font-medium">Licenciatura</th>
-              <th className="px-4 py-2 font-medium text-right">Exp.</th>
-              <th className="px-4 py-2 font-medium text-right">Materias candidatas</th>
-              <th className="px-4 py-2 font-medium text-right">Asignadas</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {profes.map((p) => (
-              <tr key={p.id} className="hover:bg-slate-50">
-                <td className="px-4 py-2">
-                  <Link href={`/profesores/${p.id}`} className="text-blue-700 hover:underline font-medium">
-                    {p.nombre}
-                  </Link>
-                </td>
-                <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
-                  {p.coordinador ?? <span className="text-amber-700 text-xs">sin asignar</span>}
-                </td>
-                <td className="px-4 py-2">
-                  {p.tiene_cv ? (
-                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-green-100 text-green-800 border-green-200">CV</span>
-                  ) : (
-                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-100 text-slate-500 border-slate-200">historial</span>
-                  )}
-                </td>
-                <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
-                  {p.planteles
-                    ? [...new Set(p.planteles.split(",").filter(Boolean).map(plantelCorto))].join(", ")
-                    : "—"}
-                </td>
-                <td className="px-4 py-2 text-slate-600">{p.licenciatura ?? "—"}</td>
-                <td className="px-4 py-2 text-right text-slate-600">{p.anios_experiencia ?? "—"}</td>
-                <td className="px-4 py-2 text-right">{p.n_cand}</td>
-                <td className="px-4 py-2 text-right">{p.n_asig}</td>
-              </tr>
-            ))}
-            {profes.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-6 text-center text-sm text-slate-400">Sin docentes con este filtro.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <TablaProfesores profes={profes} />
     </div>
   );
 }

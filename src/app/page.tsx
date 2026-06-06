@@ -23,8 +23,8 @@ export default async function Home() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Clases de septiembre" value={r.sep_total} hint="por asignar y confirmar" />
-        <Card title="Con docente asignado" value={`${r.asignados}`} hint={`${pct}% · ${r.confirmados} confirmadas, ${r.sugeridos} por revisar`} />
+        <Card title="Clases de septiembre" value={r.sep_total} hint="por asignar" />
+        <Card title="Con docente asignado" value={`${r.asignados}`} hint={`${pct}% · ${r.confirmados} a mano, ${r.sugeridos} por revisar`} />
         <Card title="Sin docente" value={sinAsignar} hint="sin docente aún" />
         <Card title="Alertas" value={totalAlertas} hint="ver detalle" />
       </div>
@@ -54,7 +54,7 @@ export default async function Home() {
       </div>
 
       <p className="text-xs text-slate-400">
-        <Sev s="alta" /> indica prioridad. Las sugerencias son automáticas; coordinación confirma o cambia cada materia.
+        <Sev s="alta" /> indica prioridad. Las sugerencias son automáticas; coordinación acepta o cambia cada materia.
       </p>
     </div>
   );

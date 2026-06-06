@@ -38,12 +38,16 @@ export function NuevoDocenteForm({ materias }: { materias: { id: number; nombre:
           <label className={label}>Doctorado <span className="text-slate-400 font-normal">(opcional)</span></label>
           <input name="doctorado" className={input} />
         </div>
-        <div className="md:col-span-2">
+        <div>
           <label className={label}>Coordinación académica * <span className="text-slate-400 font-normal">— quién lo va a asignar</span></label>
           <select name="coordinador" required defaultValue="" className={input}>
             <option value="" disabled>— Selecciona —</option>
             {COORDINADORES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+        </div>
+        <div>
+          <label className={label}>Correo del docente * <span className="text-slate-400 font-normal">— a donde se le envía su propuesta</span></label>
+          <input name="correo" type="email" required className={input} placeholder="nombre@dominio.com" />
         </div>
       </div>
 

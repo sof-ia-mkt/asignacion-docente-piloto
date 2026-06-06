@@ -73,11 +73,20 @@ export async function snapAula(aulaId: number): Promise<SnapRow> {
 }
 
 export async function snapDocente(profesorId: number): Promise<SnapRow> {
-  const [r] = await q<{ nombre: string; licenciatura: string | null; maestria: string | null; doctorado: string | null; anios_experiencia: number | null; coordinador: string | null }>(
-    "select nombre, licenciatura, maestria, doctorado, anios_experiencia, coordinador from profesores where id=$1", [profesorId]);
+  const [r] = await q<{ nombre: string; licenciatura: string | null; maestria: string | null; doctorado: string | null; anios_experiencia: number | null; coordinador: string | null; correo: string | null }>(
+    "select nombre, licenciatura, maestria, doctorado, anios_experiencia, coordinador, correo from profesores where id=$1", [profesorId]);
   return {
     kind: "row", tabla: "profesores", clave: { id: profesorId },
-    campos: r ? { nombre: r.nombre, licenciatura: r.licenciatura, maestria: r.maestria, doctorado: r.doctorado, anios_experiencia: r.anios_experiencia, coordinador: r.coordinador } : null,
+    campos: r ? { nombre: r.nombre, licenciatura: r.licenciatura, maestria: r.maestria, doctorado: r.doctorado, anios_experiencia: r.anios_experiencia, coordinador: r.coordinador, correo: r.correo } : null,
+  };
+}
+
+export async function snapPropuesta(profesorId: number): Promise<SnapRow> {
+  const [r] = await q<{ propuesta_estado: string; propuesta_enviada_en: string | null; propuesta_confirmada_en: string | null }>(
+    "select propuesta_estado, propuesta_enviada_en, propuesta_confirmada_en from profesores where id=$1", [profesorId]);
+  return {
+    kind: "row", tabla: "profesores", clave: { id: profesorId },
+    campos: r ? { propuesta_estado: r.propuesta_estado, propuesta_enviada_en: r.propuesta_enviada_en, propuesta_confirmada_en: r.propuesta_confirmada_en } : null,
   };
 }
 
@@ -98,7 +107,7 @@ const REVERSIBLES: Record<string, Set<string>> = {
   asignacion: new Set(["asignó", "quitó", "confirmó"]),
   clase: new Set(["asignó", "quitó", "editó"]),
   aula: new Set(["editó"]),
-  docente: new Set(["editó"]),
+  docente: new Set(["editó", "envió", "confirmó"]),   // editó datos · envió propuesta · confirmó propuesta
   candidatura: new Set(["agregó", "quitó"]),
 };
 

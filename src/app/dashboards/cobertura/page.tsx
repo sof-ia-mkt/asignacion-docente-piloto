@@ -22,9 +22,9 @@ export default async function CoberturaPage({
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Total de clases" value={e.total} />
-        <Card title="Con docente asignado" value={`${e.asignados}`} hint={`${pct}% · falta confirmar`} />
+        <Card title="Con docente asignado" value={`${e.asignados}`} hint={`${pct}% del total`} />
         <Card title="Sin docente" value={sinAsignar} />
-        <Card title="Confirmadas" value={e.confirmados} hint={`${e.sugeridos} por revisar`} />
+        <Card title="Asignadas a mano" value={e.confirmados} hint={`${e.sugeridos} sugeridas por revisar`} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
@@ -36,7 +36,7 @@ export default async function CoberturaPage({
         </Panel>
         <Panel title="Embudo de estados">
           <Donut data={[
-            { name: "Confirmadas", value: e.confirmados, color: COLORS.green },
+            { name: "Asignadas a mano", value: e.confirmados, color: COLORS.green },
             { name: "Sugeridas (sin revisar)", value: e.sugeridos, color: COLORS.blue },
             { name: "Sin docente", value: sinAsignar, color: COLORS.red },
           ]} />

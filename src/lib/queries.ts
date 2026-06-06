@@ -31,9 +31,9 @@ export async function getProfesores(cv: "" | "cv" | "sincv" = "", coordinador = 
   return q<{
     id: number; nombre: string; anios_experiencia: number | null;
     licenciatura: string | null; coordinador: string | null; tiene_cv: boolean; n_cand: number; n_asig: number;
-    planteles: string | null;
+    planteles: string | null; propuesta_estado: string;
   }>(
-    `select p.id, p.nombre, p.anios_experiencia, p.licenciatura, p.coordinador,
+    `select p.id, p.nombre, p.anios_experiencia, p.licenciatura, p.coordinador, p.propuesta_estado,
             exists(select 1 from cv_competencias c where c.profesor_id=p.id) tiene_cv,
             (select count(*) from materia_candidatos mc where mc.profesor_id=p.id)::int n_cand,
             (select count(*) from asignaciones a where a.profesor_id=p.id)::int n_asig,
@@ -58,10 +58,11 @@ export async function getProfesor(id: number) {
   const [prof] = await q<{
     id: number; nombre: string; licenciatura: string | null; maestria: string | null;
     doctorado: string | null; area_cv: string | null; anios_experiencia: number | null; cv_archivo: string | null;
-    coordinador: string | null; payload: Record<string, unknown> | null; modelo: string | null;
+    coordinador: string | null; correo: string | null; payload: Record<string, unknown> | null; modelo: string | null;
+    propuesta_estado: string; propuesta_enviada_en: string | null; propuesta_confirmada_en: string | null;
   }>(
     `select p.id, p.nombre, p.licenciatura, p.maestria, p.doctorado, p.area_cv, p.anios_experiencia, p.cv_archivo,
-            p.coordinador, c.payload, c.modelo
+            p.coordinador, p.correo, p.propuesta_estado, p.propuesta_enviada_en, p.propuesta_confirmada_en, c.payload, c.modelo
        from profesores p left join cv_competencias c on c.profesor_id = p.id
       where p.id = $1`, [id]);
   if (!prof) return null;
@@ -71,9 +72,9 @@ export async function getProfesor(id: number) {
       where mc.profesor_id = $1 order by mc.puntaje desc, m.nombre`, [id]);
   const asignaciones = await q<{
     slot_id: number; materia: string; grupo: string | null; plantel: string | null; dia: string | null;
-    hora_inicio: string | null; hora_fin: string | null; tipo: string | null; estado: string;
+    hora_inicio: string | null; hora_fin: string | null; tipo: string | null; estado: string; ciclo: string | null;
   }>(
-    `select s.id slot_id, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado
+    `select s.id slot_id, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado, s.ciclo
        from asignaciones a join slots s on s.id = a.slot_id
        join materias m on m.id = s.materia_id left join grupos g on g.id = s.grupo_id
       where a.profesor_id = $1 and a.profesor_id is not null order by s.plantel, s.dia, s.hora_inicio`, [id]);
@@ -116,6 +117,77 @@ export async function getProfesor(id: number) {
         and s.materia_id in (select materia_id from materia_candidatos where profesor_id = $1)
       order by s.materia_id, s.plantel, s.dia, s.hora_inicio`, [id]);
   return { prof, candidatas, asignaciones, historial, gruposAbiertos };
+}
+
+// Propuesta Académica: datos para el PDF que coordinación manda al docente con
+// las materias/horarios que va a impartir en septiembre. Incluye TODAS las clases
+// asignadas (confirmadas + sugeridas, marcadas como tentativas), con el horario, y
+// calcula el total de materias y de horas/semana. Reutiliza el mismo origen que la
+// ficha del docente, pero añade modalidad/cuatrimestre/ciclo para el membrete.
+export async function getPropuestaProfesor(id: number) {
+  const [prof] = await q<{
+    id: number; nombre: string; licenciatura: string | null; coordinador: string | null;
+  }>(
+    "select p.id, p.nombre, p.licenciatura, p.coordinador from profesores p where p.id = $1", [id]);
+  if (!prof) return null;
+  const clases = await q<{
+    slot_id: number; materia: string; grupo: string | null; plantel: string | null;
+    dia: string | null; hora_inicio: string | null; hora_fin: string | null;
+    tipo: string | null; modalidad: string | null; cuatrimestre: string | null;
+    ciclo: string | null; estado: string;
+  }>(
+    `select s.id slot_id, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin,
+            s.tipo, s.modalidad, s.cuatrimestre, s.ciclo, a.estado
+       from asignaciones a join slots s on s.id = a.slot_id
+       join materias m on m.id = s.materia_id left join grupos g on g.id = s.grupo_id
+      where a.profesor_id = $1 and a.profesor_id is not null and s.es_historial = false
+      order by s.dia, s.hora_inicio, m.nombre`, [id]);
+  // Horas/semana: suma de (fin - inicio) de las clases con horario fijo. Las asincrónicas
+  // no llevan hora, así que no suman (se reportan aparte como "en línea, sin hora fija").
+  const aMin = (h: string | null) => {
+    if (!h) return null;
+    const [hh, mm] = h.split(":").map(Number);
+    return Number.isFinite(hh) && Number.isFinite(mm) ? hh * 60 + mm : null;
+  };
+  let minutos = 0, conHorario = 0;
+  // Acumula minutos por tipo de módulo (Disciplinar / Módulo 1-3 / Virtual), para el
+  // desglose "Horas por módulo": sumamos la duración de cada clase dentro de su tipo.
+  const minPorTipo = new Map<string, { minutos: number; clases: number }>();
+  for (const c of clases) {
+    const i = aMin(c.hora_inicio), f = aMin(c.hora_fin);
+    if (i != null && f != null && f > i) {
+      const dur = f - i;
+      minutos += dur; conHorario++;
+      const tipo = (c.tipo ?? "Sin tipo").trim();
+      const acc = minPorTipo.get(tipo) ?? { minutos: 0, clases: 0 };
+      acc.minutos += dur; acc.clases++;
+      minPorTipo.set(tipo, acc);
+    }
+  }
+  // Orden natural de los módulos para mostrarlos siempre igual.
+  const ordenTipo = (t: string) => {
+    const k = t.toUpperCase();
+    if (k.startsWith("DISCIPLINAR")) return 0;
+    const m = k.match(/M[OÓ]DULO\s*(\d)/);
+    if (m) return 10 + Number(m[1]);
+    if (k.startsWith("VIRTUAL")) return 20;
+    return 30;
+  };
+  const horasPorModulo = [...minPorTipo.entries()]
+    .map(([tipo, v]) => ({ tipo, horas: Math.round((v.minutos / 60) * 10) / 10, clases: v.clases }))
+    .sort((a, b) => ordenTipo(a.tipo) - ordenTipo(b.tipo) || a.tipo.localeCompare(b.tipo));
+  const ciclo = clases.find((c) => c.ciclo)?.ciclo ?? null;
+  return {
+    prof, clases, horasPorModulo,
+    totales: {
+      materias: clases.length,
+      horasSemana: Math.round((minutos / 60) * 10) / 10,
+      conHorario,
+      sinHorario: clases.length - conHorario,
+      tentativas: clases.filter((c) => c.estado !== "confirmada").length,
+    },
+    ciclo,
+  };
 }
 
 export type SlotFiltro = { estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string; page?: number };

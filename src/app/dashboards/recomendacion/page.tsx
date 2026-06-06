@@ -27,7 +27,7 @@ export default async function RecomendacionPage({
         <Card title="Asignaciones" value={totalAsig} />
         <Card title="Apoyadas en CV" value={conCV} hint={`${totalAsig ? Math.round((conCV / totalAsig) * 100) : 0}% del total`} />
         <Card title="Puntaje promedio" value={calidad.puntaje_avg} hint="fuerza de la recomendación" />
-        <Card title="Confirmadas a mano" value={calidad.confirmadas} hint={`${calidad.automaticas} automáticas`} />
+        <Card title="Asignadas a mano" value={calidad.confirmadas} hint={`${calidad.automaticas} automáticas`} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">

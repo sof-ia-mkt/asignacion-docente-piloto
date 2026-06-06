@@ -35,7 +35,7 @@ const slug = (s: string) =>
     .toLowerCase() || "datos";
 
 const estadoLabel = (e: string | null): string =>
-  e === "confirmada" ? "Confirmada" : e === "sugerida" ? "Sugerida" : "Sin asignar";
+  e === "confirmada" ? "Asignada" : e === "sugerida" ? "Sugerida" : "Sin asignar";
 
 const sevLabel = (s: string): string =>
   s === "alta" ? "Alta" : s === "media" ? "Media" : s === "baja" ? "Baja" : s;
@@ -251,7 +251,7 @@ async function reporteDashboard(p: URLSearchParams): Promise<Report> {
             ["Total de clases", e.total],
             ["Con docente", e.asignados],
             ["Sin docente", e.total - e.asignados],
-            ["Confirmadas", e.confirmados],
+            ["Asignadas a mano", e.confirmados],
             ["Sugeridas (por revisar)", e.sugeridos],
           ],
         },
@@ -321,7 +321,7 @@ async function reporteDashboard(p: URLSearchParams): Promise<Report> {
           rows: [
             ["Puntaje promedio", calidad.puntaje_avg],
             ["Automáticas", calidad.automaticas],
-            ["Confirmadas a mano", calidad.confirmadas],
+            ["Asignadas a mano", calidad.confirmadas],
           ],
         },
         {
@@ -355,7 +355,7 @@ async function reporteDashboard(p: URLSearchParams): Promise<Report> {
           ["Clases de septiembre", e.total],
           ["Con docente", e.asignados],
           ["Sin docente", e.total - e.asignados],
-          ["Confirmadas", e.confirmados],
+          ["Asignadas a mano", e.confirmados],
           ["Sugeridas (por revisar)", e.sugeridos],
           ["Docentes con carga", doc.resumen.docentes],
           ["Carga promedio", doc.resumen.avgc],

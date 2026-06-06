@@ -104,7 +104,7 @@ export default async function SlotPage({
             <div className="mt-3 flex gap-2">
               {slot.estado === "sugerida" && (
                 <form action={confirmar.bind(null, slotId)}>
-                  <button className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm">Confirmar sugerencia</button>
+                  <button className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm">Aceptar sugerencia</button>
                 </form>
               )}
               <form action={quitarAsignacion.bind(null, slotId, slot.docente_id ?? undefined)}>

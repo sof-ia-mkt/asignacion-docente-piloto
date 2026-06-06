@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProfesor } from "@/lib/queries";
-import { Estado, TipoClase, plantelCorto } from "@/lib/ui";
+import { Estado, PropuestaEstado, TipoClase, plantelCorto, cicloLabel } from "@/lib/ui";
 import { quitarAsignacion, eliminarDocente } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { ExportButtons } from "@/lib/export-buttons";
 import { MateriasAsignables, type GrupoAbierto } from "./materias-asignables";
+import { PropuestaAcciones } from "./propuesta-acciones";
 
 export default async function ProfesorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -47,6 +48,50 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
   const afinidad = todas.filter((c) => c.puntaje < 25);
   const disponibles = todas.filter((c) => !c.yaLaDa).length;
 
+  // Correo pregrabado (mailto): abre el cliente de correo del coordinador con destinatario,
+  // asunto y cuerpo ya escritos (resumen de materias + horas). La app NO envía: el coordinador
+  // revisa y da "Enviar" desde su propia cuenta institucional. El botón se deshabilita sin correo.
+  const aMin = (h: string | null) => {
+    if (!h) return null;
+    const [hh, mm] = h.split(":").map(Number);
+    return Number.isFinite(hh) && Number.isFinite(mm) ? hh * 60 + mm : null;
+  };
+  const minutos = asignaciones.reduce((acc, a) => {
+    const i = aMin(a.hora_inicio), f = aMin(a.hora_fin);
+    return acc + (i != null && f != null && f > i ? f - i : 0);
+  }, 0);
+  const horasSemana = Math.round((minutos / 60) * 10) / 10;
+  const ciclo = asignaciones.find((a) => a.ciclo)?.ciclo ?? null;
+  const lineasMaterias = asignaciones.map((a) => {
+    const horario = a.dia ? `${a.dia} ${a.hora_inicio ?? ""}-${a.hora_fin ?? ""}`.trim() : "En línea (sin hora fija)";
+    const tentativa = a.estado !== "confirmada" ? " (tentativa)" : "";
+    return `- ${a.materia}${a.tipo ? ` (${a.tipo})` : ""} · ${a.grupo ?? "s/grupo"} · ${plantelCorto(a.plantel)} · ${horario}${tentativa}`;
+  });
+  const asuntoCorreo = `Propuesta Académica — ${cicloLabel(ciclo)} · CENYCA`;
+  const cuerpoCorreo = [
+    `Estimado/a ${prof.nombre}:`,
+    "",
+    `Por medio de la presente, la Coordinación Académica de CENYCA (IBERO Tijuana) le comparte su Propuesta Académica para el periodo ${cicloLabel(ciclo)}. A continuación, las materias y horarios asignados:`,
+    "",
+    ...lineasMaterias,
+    "",
+    `Total: ${asignaciones.length} materia(s) · ${horasSemana} horas/semana.`,
+    "",
+    "Le pedimos confirmar de recibido y su conformidad respondiendo a este correo. Quedamos atentos a cualquier comentario o ajuste.",
+    "",
+    "Atentamente,",
+    "Coordinación Académica — CENYCA",
+    "IBERO Tijuana",
+  ].join("\r\n");
+  const mailtoHref = prof.correo
+    ? `mailto:${encodeURIComponent(prof.correo)}?subject=${encodeURIComponent(asuntoCorreo)}&body=${encodeURIComponent(cuerpoCorreo)}`
+    : null;
+
+  const fechaCorta = (s: string) => {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+  };
+
   const stat = (n: number, label: string, color: string) => (
     <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
       <div className={`text-2xl font-semibold ${n === 0 ? "text-slate-300" : color}`}>{n}</div>
@@ -58,7 +103,21 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <Link href="/profesores" className="text-sm text-blue-700 hover:underline">← Profesores</Link>
-        <ExportButtons tipo="profesor" params={{ id: prof.id }} />
+        <div className="flex items-center gap-1.5">
+          <Link
+            href={`/imprimir/propuesta/${prof.id}`}
+            target="_blank"
+            className="px-2.5 py-1.5 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">
+            Propuesta Académica (PDF)
+          </Link>
+          <PropuestaAcciones
+            profesorId={prof.id}
+            estado={prof.propuesta_estado}
+            mailtoHref={mailtoHref}
+            nombre={prof.nombre}
+          />
+          <ExportButtons tipo="profesor" params={{ id: prof.id }} />
+        </div>
       </div>
 
       {/* Encabezado: identidad y formación, compacto */}
@@ -79,6 +138,21 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
           {prof.coordinador
             ? <span className="font-medium text-slate-800">{prof.coordinador}</span>
             : <span className="text-amber-700">sin asignar</span>}
+          <span className="mx-2 text-slate-300">·</span>
+          Correo:{" "}
+          {prof.correo
+            ? <a href={`mailto:${prof.correo}`} className="font-medium text-blue-700 hover:underline">{prof.correo}</a>
+            : <span className="text-amber-700">sin correo</span>}
+        </p>
+        <p className="mt-2 text-sm flex items-center gap-2">
+          <span className="text-slate-600">Propuesta:</span>
+          <PropuestaEstado e={prof.propuesta_estado} />
+          {prof.propuesta_estado === "confirmada" && prof.propuesta_confirmada_en && (
+            <span className="text-xs text-slate-400">confirmada el {fechaCorta(prof.propuesta_confirmada_en)}</span>
+          )}
+          {prof.propuesta_estado === "enviada" && prof.propuesta_enviada_en && (
+            <span className="text-xs text-slate-400">enviada el {fechaCorta(prof.propuesta_enviada_en)}</span>
+          )}
         </p>
         <dl className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
           <div><dt className="text-slate-500">Licenciatura</dt><dd className="text-slate-800">{prof.licenciatura ?? "—"}</dd></div>
@@ -103,7 +177,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-medium text-slate-700">Clases de septiembre asignadas a este docente</h2>
         <p className="mb-3 text-xs text-slate-400">
-          &quot;Sugerida&quot; = el sistema la propuso, falta que coordinación la confirme · &quot;Confirmada&quot; = ya aprobada por coordinación.
+          &quot;Sugerida&quot; = el sistema la propuso, falta revisarla · &quot;Asignada&quot; = coordinación la fijó en esa clase. (La propuesta del docente se confirma arriba, una vez enviada.)
         </p>
         {asignaciones.length === 0 ? (
           <p className="text-sm text-slate-400">Todavía no tiene clases asignadas para septiembre.</p>
