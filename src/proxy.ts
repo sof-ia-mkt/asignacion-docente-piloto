@@ -1,26 +1,28 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { leerToken } from "@/lib/session-token";
+import { COOKIE_SESION } from "@/lib/session-cookie";
 
-// Candado simple para el piloto: pide usuario y contraseña (popup del navegador)
-// antes de dejar entrar a cualquier página. Si APP_PASSWORD no está configurada
-// (ej. en local) se deja pasar sin candado.
-export function proxy(request: NextRequest) {
-  const pass = process.env.APP_PASSWORD;
-  if (!pass) return NextResponse.next();
+// Candado de la plataforma: cada página exige una sesión válida (cookie firmada).
+// Si no hay sesión, se redirige a /login. La validación profunda (que el usuario siga
+// activo en la base) la hace src/lib/session.ts; aquí solo verificamos firma y expiración.
+export async function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-  const user = process.env.APP_USER || "cenyca";
-  const auth = request.headers.get("authorization");
-  if (auth?.startsWith("Basic ")) {
-    const decoded = Buffer.from(auth.slice(6), "base64").toString();
-    const i = decoded.indexOf(":");
-    if (decoded.slice(0, i) === user && decoded.slice(i + 1) === pass) {
-      return NextResponse.next();
-    }
+  // /login y los recursos públicos no requieren sesión (si no, no se podría entrar).
+  if (pathname === "/login" || pathname.startsWith("/login/")) {
+    return NextResponse.next();
   }
-  return new NextResponse("Autenticación requerida.", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="Asignación Docente CENYCA", charset="UTF-8"' },
-  });
+
+  const token = request.cookies.get(COOKIE_SESION)?.value;
+  if (await leerToken(token)) {
+    return NextResponse.next();
+  }
+
+  const url = request.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  return NextResponse.redirect(url);
 }
 
 export const config = {

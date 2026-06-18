@@ -12,7 +12,7 @@ export default async function NuevaMateriaPage() {
       <div>
         <h1 className="text-xl font-semibold text-slate-900">Nueva materia por grupo</h1>
         <p className="text-sm text-slate-500">
-          Agrega una clase del ciclo de septiembre que falte. Luego podrás asignarle docente y aula.
+          Agrega una clase que falte en el ciclo que estás asignando. Luego podrás asignarle docente y aula.
         </p>
       </div>
       <NuevaMateriaForm planteles={planteles} materias={materias} grupos={grupos} />

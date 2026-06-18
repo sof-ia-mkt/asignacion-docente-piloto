@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProfesor, getMaterias } from "@/lib/queries";
+import { nombresCoordinadores } from "@/lib/usuarios-db";
 import { agregarCandidatura, quitarCandidatura } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { EditarDocenteForm } from "./form";
@@ -9,7 +10,7 @@ import { CVUpload } from "./cv-upload";
 export default async function EditarDocentePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const profId = Number(id);
-  const [data, materias] = await Promise.all([getProfesor(profId), getMaterias()]);
+  const [data, materias, coordinadores] = await Promise.all([getProfesor(profId), getMaterias(), nombresCoordinadores()]);
   if (!data) notFound();
   const { prof, candidatas } = data;
 
@@ -29,7 +30,7 @@ export default async function EditarDocentePage({ params }: { params: Promise<{ 
       {/* Datos básicos */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-medium text-slate-700 mb-4">Datos del docente</h2>
-        <EditarDocenteForm prof={prof} />
+        <EditarDocenteForm prof={prof} coordinadores={coordinadores} />
       </div>
 
       {/* Leer CV con IA: suma materias candidatas y actualiza sus datos */}

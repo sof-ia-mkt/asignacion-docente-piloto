@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getDashCobertura, getDashDocentes, getDashRiesgos, getDashRecomendacion } from "@/lib/queries";
+import { cicloActivo } from "@/lib/ciclo";
 import { Card, Panel } from "@/lib/ui";
 import { Donut } from "@/lib/charts";
 import { ExportButtons } from "@/lib/export-buttons";
@@ -8,8 +9,9 @@ export default async function DashboardsHome({
   searchParams,
 }: { searchParams: Promise<{ plantel?: string }> }) {
   const plantel = (await searchParams).plantel ?? "";
-  const [cob, doc, rie, rec] = await Promise.all([
+  const [cob, doc, rie, rec, act] = await Promise.all([
     getDashCobertura(plantel), getDashDocentes(plantel), getDashRiesgos(plantel), getDashRecomendacion(plantel),
+    cicloActivo(),
   ]);
   const e = cob.estados;
   const sinAsignar = e.total - e.asignados;
@@ -21,13 +23,13 @@ export default async function DashboardsHome({
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-slate-500">
-          Vista general del ciclo de septiembre. Entra a cada monitor para el detalle.
+          Vista general de <b className="text-slate-700">{act.nombre}</b>. Entra a cada monitor para el detalle.
         </p>
         <ExportButtons tipo="dashboard" params={{ vista: "resumen", plantel }} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Clases de septiembre" value={e.total} hint="por asignar" />
+        <Card title={`Clases de ${act.nombre}`} value={e.total} hint="por asignar" />
         <Card title="Con docente asignado" value={`${pct}%`} hint={`${e.asignados} clases con docente`} />
         <Card title="Sin docente" value={sinAsignar} hint="sin docente aún" />
         <Card title="Asignadas a mano" value={e.confirmados} hint={`${e.sugeridos} sugeridas por revisar`} />
@@ -38,14 +40,17 @@ export default async function DashboardsHome({
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Panel title="Asignación de septiembre">
+        <Panel title="Avance de la asignación">
           <Donut data={[
             { name: "Con docente", value: e.asignados, color: "#16a34a" },
             { name: "Sin docente", value: sinAsignar, color: "#dc2626" },
           ]} />
         </Panel>
-        <Panel title="Origen de la recomendación">
-          <Donut data={rec.origen.map((o) => ({ name: o.origen, value: o.n }))} />
+        <Panel title="Avance de revisión">
+          <Donut data={[
+            { name: "Por revisar", value: e.sugeridos, color: "#2563eb" },
+            { name: "Revisadas a mano", value: e.confirmados, color: "#16a34a" },
+          ]} />
         </Panel>
       </div>
 

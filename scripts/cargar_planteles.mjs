@@ -134,7 +134,7 @@ try {
   }
   await batchInsert("materia_candidatos",
     ["profesor_id", "materia_id", "fuente", "puntaje", "razon"], candRows,
-    { conflict: "on conflict (profesor_id, materia_id, fuente) do nothing" });
+    { conflict: "on conflict (profesor_id, materia_id) do nothing" });
 
   await client.query("commit");
 

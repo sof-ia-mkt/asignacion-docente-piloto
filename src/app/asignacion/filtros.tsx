@@ -4,10 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { plantelCorto, tipoLabel } from "@/lib/ui";
 
-type Conteo = { total: number; sin: number; con: number };
+type Conteo = { total: number; sin: number; con: number; rev: number; parked: number };
 
 // Barra de filtros de la pantalla de Asignación (Opción C):
-//  - Control segmentado por estado (Todos / Sin docente / Con docente) con conteos.
+//  - Control segmentado por estado (Todas / Sin docente / Por revisar / Confirmadas) con conteos.
+//    Las tres cubetas de trabajo son disjuntas y suman el total: Sin docente (sin candidato puesto),
+//    Por revisar (sugerencia automática pendiente de coordinación), Confirmadas (ya revisadas).
 //  - Buscador + tres menús desplegables (plantel, cuatrimestre, tipo).
 //  - Pastillas quitables que muestran los filtros activos.
 // Toda la navegación se hace por URL (searchParams) para que sea compartible y
@@ -45,7 +47,13 @@ export function AsignacionFiltros({
   const segmentos = [
     { v: "", label: "Todas", n: conteo.total },
     { v: "sin_asignar", label: "Sin docente", n: conteo.sin },
-    { v: "asignado", label: "Con docente", n: conteo.con },
+    { v: "por_revisar", label: "Por revisar", n: conteo.rev },
+    { v: "asignado", label: "Confirmadas", n: conteo.con },
+    // "No se abren": solo aparece cuando hay clases parqueadas (o si la estás viendo),
+    // para no estorbar cuando no se usa.
+    ...(conteo.parked > 0 || estado === "no_apertura"
+      ? [{ v: "no_apertura", label: "No se abren", n: conteo.parked }]
+      : []),
   ];
 
   const pills: { label: string; clear: Record<string, string> }[] = [];

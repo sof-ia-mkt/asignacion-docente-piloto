@@ -1,0 +1,567 @@
+{
+  "umbral_typo": 0.86,
+  "typos_probables": [
+    {
+      "materia": "ELETRÓNICA ANALÓGICA",
+      "veces": 19,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ELECTRÓNICA ANALÓGICA",
+      "parecido": 0.98
+    },
+    {
+      "materia": "INTRODUCCIÓN A LA INGENIERIA MECATRÓNICA",
+      "veces": 19,
+      "origen": [
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "INTRODUCCIÓN A LA INGENIERÍA ELECTROMECÁNICA",
+      "parecido": 0.88
+    },
+    {
+      "materia": "DESAROLLO HUMANO",
+      "veces": 17,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "DESARROLLO HUMANO",
+      "parecido": 0.97
+    },
+    {
+      "materia": "LIDERACZGO Y DIRECCIÓN",
+      "veces": 16,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "LIDERAZGO Y DIRRECION",
+      "parecido": 0.93
+    },
+    {
+      "materia": "PLANEACIÓN ESTRATEGICA Y OPERATIVA",
+      "veces": 13,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "PLANEACION ESTRETEGICA Y OPERATIVA",
+      "parecido": 0.97
+    },
+    {
+      "materia": "EVALUACIÓN DEL DESEMPEÑO LABORAL",
+      "veces": 13,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "EVALUACION DE DESEMPEÑO LABORAL",
+      "parecido": 0.98
+    },
+    {
+      "materia": "ADMISTRACIÓN PYME",
+      "veces": 12,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ADMINISTRACIÓN PYME",
+      "parecido": 0.94
+    },
+    {
+      "materia": "PROYECTOS DE INVERSIÓN",
+      "veces": 12,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "PROYECTOS DE INVESTIGACIÓN",
+      "parecido": 0.88
+    },
+    {
+      "materia": "DESARROLLO PSICOLOGICO EN LA ADOLESCENCIA",
+      "veces": 11,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "DESARROLLO PSICOLOGICO EN LA INFANCIA",
+      "parecido": 0.87
+    },
+    {
+      "materia": "TECNOLOGÍA DE LA INFORMACIÓN PARA LA INGENIERÍA",
+      "veces": 11,
+      "origen": [
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "TECNOLOGÍAS DE LA INFORMACIÓN PARA LA INGENIERÍA",
+      "parecido": 0.99
+    },
+    {
+      "materia": "DELICUENCIA CIBERNETICA",
+      "veces": 10,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "DELINCUENCIA CIBERNÉTICA",
+      "parecido": 0.98
+    },
+    {
+      "materia": "FIANZAS INTERNACIONALES",
+      "veces": 7,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "FINANZAS INTERNACIONALES",
+      "parecido": 0.98
+    },
+    {
+      "materia": "FUNDAMENTOS DE MANUFACTURA ESBELTA",
+      "veces": 5,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "FUNDAMENTOS DE LA MANUFACTURA ESBELTA",
+      "parecido": 0.96
+    },
+    {
+      "materia": "COSTOS DE ALIMENTOS Y BEBIDAS",
+      "veces": 4,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "COSTOS EN ALIMENTOS Y BEBIDAS",
+      "parecido": 0.97
+    },
+    {
+      "materia": "CALCULO MULTIVARUABLE",
+      "veces": 3,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "CÁLCULO MULTIVARIABLE",
+      "parecido": 0.95
+    },
+    {
+      "materia": "PRACTICA DE REPOSTERIA",
+      "veces": 1,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "PRACTICAS DE REPOSTERIA",
+      "parecido": 0.98
+    },
+    {
+      "materia": "CALCULO MULTIVARIABEL",
+      "veces": 1,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "CÁLCULO MULTIVARIABLE",
+      "parecido": 0.95
+    },
+    {
+      "materia": "INGLES III",
+      "veces": 1,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "INGLES II",
+      "parecido": 0.95
+    }
+  ],
+  "materias_nuevas": [
+    {
+      "materia": "GESTIÓN DEL TALENTO HUMANO",
+      "veces": 52,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ADMINISTRACIÓN DEL CAPITAL HUMANO",
+      "parecido": 0.68
+    },
+    {
+      "materia": "DIDACTICA GENERAL",
+      "veces": 26,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "PEDAGOGÍA GENERAL",
+      "parecido": 0.71
+    },
+    {
+      "materia": "TALLER DE LIDERAZGO EDUCATIVO",
+      "veces": 22,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ADMINISTRACIÓN DE CENTROS EDUCATIVOS",
+      "parecido": 0.58
+    },
+    {
+      "materia": "SEGURIDAD INDUSTRIAL E HIGIENE ORGANIZACIONAL",
+      "veces": 20,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "SEGURIDAD INDUSTRIAL E HIGIENE",
+      "parecido": 0.8
+    },
+    {
+      "materia": "TALLER DE ORIENTACIÓN Y TUTORIAS",
+      "veces": 18,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "SISTEMA DE IDENTIFICACIÓN JUDICIAL",
+      "parecido": 0.58
+    },
+    {
+      "materia": "GESTIÓN HUMANA",
+      "veces": 16,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "GESTION DE CALIDAD",
+      "parecido": 0.62
+    },
+    {
+      "materia": "ESTRES LABORAL",
+      "veces": 16,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "DERECHO LABORAL",
+      "parecido": 0.76
+    },
+    {
+      "materia": "VENTAS Y COMERCIO DIGITAL",
+      "veces": 13,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "CIRCUITOS DIGITALES",
+      "parecido": 0.59
+    },
+    {
+      "materia": "TEORIAS PSICOPEDAGÓGICAS DEL APRENDIZAJE",
+      "veces": 13,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "PSICOLOGÍA DE LA ORGANIZACIÓN",
+      "parecido": 0.55
+    },
+    {
+      "materia": "INVESTIGACIÓN DE MERCADOS",
+      "veces": 12,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ADMINISTRACIÓN DE LA MERCADOTECNIA",
+      "parecido": 0.68
+    },
+    {
+      "materia": "POLITICAS EDUCATIVAS",
+      "veces": 11,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "SISTEMAS OPERATIVOS",
+      "parecido": 0.56
+    },
+    {
+      "materia": "CONTROL DE LA CALIDAD",
+      "veces": 11,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "CONTROL ESTADÍSTICO DE LA CALIDAD",
+      "parecido": 0.78
+    },
+    {
+      "materia": "ENTREVISTAS ORGANIZACIONALES",
+      "veces": 10,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ESTRUCTURA ORGANIZACIONAL",
+      "parecido": 0.75
+    },
+    {
+      "materia": "ANALISIS FINANCIERO",
+      "veces": 9,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ANALISIS DE ESTADOS FINANCIEROS",
+      "parecido": 0.76
+    },
+    {
+      "materia": "PSICOLOGIA DE LOS GRUPOS",
+      "veces": 9,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "PSICOLOGÍA DE LA ORGANIZACIÓN",
+      "parecido": 0.68
+    },
+    {
+      "materia": "ADMINISTRACIÓN DE SUELDOS",
+      "veces": 9,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ADMINISTRACIÓN DE BASE DE DATOS",
+      "parecido": 0.82
+    },
+    {
+      "materia": "PEQUEÑAS Y MEDIANAS EMPRESAS",
+      "veces": 9,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "MÁQUINAS Y HERRAMIENTAS",
+      "parecido": 0.51
+    },
+    {
+      "materia": "ANÁLISIS DE PRECIOS",
+      "veces": 8,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "ANALISIS DE ESTADOS FINANCIEROS",
+      "parecido": 0.68
+    },
+    {
+      "materia": "ECONOMIA EDUCATIVA",
+      "veces": 7,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "INNOVACIÓN Y TECNOLOGÍA EDUCATIVA",
+      "parecido": 0.63
+    },
+    {
+      "materia": "DERECHO PROCESAL CIVIL",
+      "veces": 7,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "DERECHO PROCESAL PENAL",
+      "parecido": 0.82
+    },
+    {
+      "materia": "DERECHI FISCAL Y TRIBUTARIO",
+      "veces": 6,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "DERECHO PROCESAL DEL TRABAJO",
+      "parecido": 0.62
+    },
+    {
+      "materia": "DERECHOS INTERNACIONALES DE LOS DERECHOS HUMANOS",
+      "veces": 6,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "DERECHO CONSTITUCIONAL LOCAL",
+      "parecido": 0.55
+    },
+    {
+      "materia": "SIMULACIÓN DE SISTEMAS PARA LOS NEGOCIOS",
+      "veces": 5,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "INTRODUCCIÓN A LOS SISTEMAS COMPUTACIONALES",
+      "parecido": 0.55
+    },
+    {
+      "materia": "BASES DE LA PANADERIA",
+      "veces": 5,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "GESTIÓN DE LA CALIDAD",
+      "parecido": 0.57
+    },
+    {
+      "materia": "GASTRONOMIA",
+      "veces": 5,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "GASTRONOMÍA MEXICANA",
+      "parecido": 0.71
+    },
+    {
+      "materia": "CONTABILIDAD AVANZADA",
+      "veces": 4,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "CONTABILIDAD",
+      "parecido": 0.73
+    },
+    {
+      "materia": "MEDICINA LEGAL",
+      "veces": 4,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "MEDICINA FORENSE",
+      "parecido": 0.67
+    },
+    {
+      "materia": "BIOQUIMICA DE LOS ALIMENTOS",
+      "veces": 4,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "HIGIENE EN LOS ALIMENTOS",
+      "parecido": 0.71
+    },
+    {
+      "materia": "IVA",
+      "veces": 4,
+      "origen": [
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "VENTAS",
+      "parecido": 0.44
+    },
+    {
+      "materia": "IMPUESTOS ESPECIALES Y LOCALES",
+      "veces": 4,
+      "origen": [
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "CRIMINOLOGIAS ESPECIFICAS",
+      "parecido": 0.51
+    },
+    {
+      "materia": "SISTEMAS CONTEMPORANEOS DE COSTOS",
+      "veces": 3,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "SISTEMAS OPERATIVOS",
+      "parecido": 0.58
+    },
+    {
+      "materia": "BASES CULINARIAS",
+      "veces": 3,
+      "origen": [
+        "demanda",
+        "disponibilidad"
+      ],
+      "sugerencia_catalogo": "MÁQUINAS TÉRMICAS",
+      "parecido": 0.55
+    },
+    {
+      "materia": "IVA, IMPUESTOS ESPECIALES Y LOCALES",
+      "veces": 2,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "COSTOS EN ALIMENTOS Y BEBIDAS",
+      "parecido": 0.47
+    },
+    {
+      "materia": "BANQUETES",
+      "veces": 2,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "MÁQUINAS TÉRMICAS",
+      "parecido": 0.46
+    },
+    {
+      "materia": "ENOLOGIA",
+      "veces": 2,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "CRIMINOLOGÍA",
+      "parecido": 0.7
+    },
+    {
+      "materia": "SELECCIÓN Y CONSERVACIÓN DE LOS ALIMENTOS",
+      "veces": 2,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "EVALUACIÓN Y ADMINISTRACIÓN DE PROYECTOS",
+      "parecido": 0.64
+    },
+    {
+      "materia": "TURISMO",
+      "veces": 2,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "NUTRICIÓN",
+      "parecido": 0.5
+    },
+    {
+      "materia": "SEM",
+      "veces": 1,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "ECONOMÍA",
+      "parecido": 0.36
+    },
+    {
+      "materia": "BIOQUIMICA E LOS ALIMENTOS",
+      "veces": 1,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "HIGIENE EN LOS ALIMENTOS",
+      "parecido": 0.72
+    },
+    {
+      "materia": "TALLER DE EMPRENDEDORES",
+      "veces": 1,
+      "origen": [
+        "demanda"
+      ],
+      "sugerencia_catalogo": "DESARROLLO DE EMPRENDEDORES",
+      "parecido": 0.8
+    }
+  ]
+}

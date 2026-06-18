@@ -1,7 +1,6 @@
 "use client";
 import { useActionState } from "react";
 import { editarDocente, type EditarDocenteState } from "@/app/actions";
-import { COORDINADORES } from "@/lib/ui";
 
 const input = "w-full px-3 py-2 rounded-md border border-slate-300 text-sm";
 const label = "block text-sm font-medium text-slate-700 mb-1";
@@ -17,10 +16,15 @@ type Datos = {
   correo: string | null;
 };
 
-export function EditarDocenteForm({ prof }: { prof: Datos }) {
+export function EditarDocenteForm({ prof, coordinadores }: { prof: Datos; coordinadores: string[] }) {
   // bind del id: la acción queda como (prev, fd) que es lo que espera useActionState.
   const action = editarDocente.bind(null, prof.id);
   const [state, formAction, pending] = useActionState<EditarDocenteState, FormData>(action, {});
+
+  // Si el coordinador actual ya no está en el padrón activo, lo dejamos visible para no perderlo.
+  const opciones = prof.coordinador && !coordinadores.includes(prof.coordinador)
+    ? [prof.coordinador, ...coordinadores]
+    : coordinadores;
 
   return (
     <form action={formAction} className="space-y-5 max-w-2xl">
@@ -50,7 +54,7 @@ export function EditarDocenteForm({ prof }: { prof: Datos }) {
           <label className={label}>Coordinación académica * <span className="text-slate-400 font-normal">— quién lo va a asignar</span></label>
           <select name="coordinador" required defaultValue={prof.coordinador ?? ""} className={input}>
             <option value="" disabled>— Selecciona —</option>
-            {COORDINADORES.map((c) => <option key={c} value={c}>{c}</option>)}
+            {opciones.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div>

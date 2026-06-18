@@ -3,25 +3,28 @@
 // crearDocente por CV SÍ llama a Claude una vez (~$0.05); por camino manual es $0.
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { q, pool } from "@/lib/db";
+import { cicloActivo, getCiclos } from "@/lib/ciclo";
 import { leerCV } from "@/lib/cv";
-import { esCoordinador } from "@/lib/ui";
+import { nombresCoordinadores } from "@/lib/usuarios-db";
 import { recomputarAlertas } from "@/lib/alertas-core.mjs";
 import { registrarCambio } from "@/lib/audit";
 import {
   aplicarReversion,
-  snapAsignacion, snapSlotAula, snapSlotHorario, snapAula, snapDocente, snapCandidatura, snapPropuesta,
+  snapAsignacion, snapSlotAula, snapSlotHorario, snapSlotApertura, snapAula, snapDocente, snapCandidatura, snapPropuesta,
 } from "@/lib/revertir";
 
 // Recalcula las alertas desde el ESTADO ACTUAL (diagnóstico; NO reasigna docentes ni aulas).
 // Misma fuente de verdad que el motor (src/lib/alertas-core.mjs). Se llama tras cada edición
 // para que el panel de alertas nunca quede como una foto vieja. Va en su propia transacción.
 async function recalcularAlertas() {
+  const act = await cicloActivo();
   const client = await pool.connect();
   try {
     await client.query("begin");
     await recomputarAlertas((sql: string, params: unknown[] = []) =>
-      client.query(sql, params).then((r) => r.rows));
+      client.query(sql, params).then((r) => r.rows), act.id);
     await client.query("commit");
   } catch (e) {
     await client.query("rollback");
@@ -36,6 +39,18 @@ export async function recalcularAlertasManual() {
   await recalcularAlertas();
   revalidatePath("/alertas");
   revalidatePath("/");
+}
+
+// Selector de ciclo del header: guarda en una cookie qué ciclo está viendo coordinación.
+// Toda la app (queries, acciones, alertas) lee esa cookie vía cicloActivo(). Revalida en
+// modo 'layout' para que TODAS las páginas se refresquen con el ciclo recién elegido.
+export async function seleccionarCiclo(fd: FormData) {
+  const codigo = String(fd.get("ciclo") ?? "").trim();
+  const ciclos = await getCiclos();
+  if (!ciclos.some((c) => c.codigo === codigo)) return;   // ignora valores que no existen
+  const jar = await cookies();
+  jar.set("ciclo", codigo, { path: "/", maxAge: 60 * 60 * 24 * 365, sameSite: "lax" });
+  revalidatePath("/", "layout");
 }
 
 const slugify = (s: string) =>
@@ -61,7 +76,7 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
   if (!nombre || !licenciatura || !aniosRaw)
     return { error: "Faltan campos obligatorios: nombre, licenciatura y años de experiencia." };
   if (!coordinador) return { error: "Indica qué coordinador(a) académico lo va a asignar." };
-  if (!esCoordinador(coordinador)) return { error: "Coordinador(a) no válido." };
+  if (!(await nombresCoordinadores()).includes(coordinador)) return { error: "Coordinador(a) no válido." };
   if (!correo) return { error: "El correo del docente es obligatorio: es a donde se le envía su propuesta." };
   if (!esCorreoValido(correo)) return { error: "El correo no tiene un formato válido (ej. nombre@dominio.com)." };
   const anios = Number(aniosRaw);
@@ -116,7 +131,7 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
         await client.query(
           `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
            values ($1,$2,'cv',$3,$4)
-           on conflict (profesor_id, materia_id, fuente) do nothing`,
+           on conflict (profesor_id, materia_id) do nothing`,
           [profesorId, c.materia_id, c.puntaje, c.razon]);
       }
     } else {
@@ -130,14 +145,14 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
         await client.query(
           `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
            values ($1,$2,'historial',40,'Marcado por coordinación: ya impartió esta materia')
-           on conflict (profesor_id, materia_id, fuente) do nothing`,
+           on conflict (profesor_id, materia_id) do nothing`,
           [profesorId, mid]);
       }
     }
     // Recálculo de alertas en la MISMA transacción: sus nuevas candidaturas pueden resolver
     // un "sin_candidato" existente. Una sola foto coherente del estado final.
     await recomputarAlertas((sql: string, params: unknown[] = []) =>
-      client.query(sql, params).then((r) => r.rows));
+      client.query(sql, params).then((r) => r.rows), (await cicloActivo()).id);
     await client.query("commit");
   } catch (e) {
     await client.query("rollback");
@@ -171,8 +186,9 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
 // La UI ya oculta el botón en estos casos; este candado protege ante pantallas viejas o
 // llamadas directas. Lanza un error claro (en español) si se intenta violar la regla.
 export async function asignar(slotId: number, profesorId: number, puntaje?: number, razon?: string) {
+  const act = await cicloActivo();
   const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null }>(
-    "select modalidad, dia, hora_inicio, hora_fin from slots where id=$1 and es_historial=false", [slotId]);
+    `select modalidad, dia, hora_inicio, hora_fin from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
   if (!s) throw new Error("La clase no existe o no es del cuatrimestre a asignar.");
   const asincronica = (s.modalidad ?? "").toUpperCase().includes("ASINCR");
   const sinHorario = !s.dia || !s.hora_inicio || !s.hora_fin;
@@ -185,7 +201,7 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
          join slots s2 on s2.id = a2.slot_id
          left join materias m2 on m2.id = s2.materia_id
          left join grupos g2 on g2.id = s2.grupo_id
-        where a2.profesor_id = $1 and s2.es_historial = false and s2.id <> $2
+        where a2.profesor_id = $1 and s2.ciclo_id = ${act.id} and s2.id <> $2
           and s2.dia = $3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
         order by s2.hora_inicio limit 1`,
       [profesorId, slotId, s.dia, s.hora_inicio, s.hora_fin]);
@@ -228,7 +244,7 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
 
 // Confirma la sugerencia automática tal cual (la "acepta" coordinación).
 // Solo cambia el estado (sugerida→confirmada), no el docente, así que el diagnóstico no cambia.
-export async function confirmar(slotId: number) {
+export async function confirmar(slotId: number, profesorId?: number) {
   const antes = await snapAsignacion(slotId);   // foto del antes (estado previo)
   // Candado de integridad (no solo UI): no se puede "confirmar" una clase sin docente.
   const upd = await q<{ slot_id: number }>(
@@ -253,29 +269,43 @@ export async function confirmar(slotId: number) {
   }
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
+  if (profesorId) revalidatePath(`/profesores/${profesorId}`);
   revalidatePath("/");
 }
 
 // Confirma EN LOTE todas las sugerencias automáticas que aún no se revisan (estado 'sugerida',
 // con docente), opcionalmente acotado a un plantel. Es la forma rápida de "aceptar lo que propuso
 // el sistema" sin abrir clase por clase. No cambia el docente, sólo el estado → no toca las alertas.
-export async function confirmarSugeridas(plantel?: string) {
+// Confirma en lote SOLO las sugerencias que caen dentro de los filtros activos de la lista
+// (plantel/cuatri/tipo/búsqueda). Así el botón nunca toca clases que el coordinador no está
+// viendo: confirma exactamente lo que tiene en pantalla.
+export async function confirmarSugeridas(
+  filtro: { plantel?: string; cuatri?: string; tipo?: string; q?: string } = {},
+) {
+  const act = await cicloActivo();
+  const conds: string[] = [`s.ciclo_id = ${act.id}`];
   const params: unknown[] = [];
-  let scope = "";
-  if (plantel) {
-    params.push(plantel);
-    scope = ` and slot_id in (select id from slots where es_historial = false and plantel = $${params.length})`;
-  }
+  if (filtro.plantel) { params.push(filtro.plantel); conds.push(`s.plantel = $${params.length}`); }
+  if (filtro.cuatri) { params.push(filtro.cuatri); conds.push(`s.cuatrimestre = $${params.length}`); }
+  if (filtro.tipo) { params.push(filtro.tipo); conds.push(`s.tipo = $${params.length}`); }
+  if (filtro.q) { params.push(`%${filtro.q}%`); conds.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length})`); }
+  const sub = `select s.id from slots s
+                 left join materias m on m.id = s.materia_id
+                 left join grupos g on g.id = s.grupo_id
+                where ${conds.join(" and ")}`;
   const upd = await q<{ slot_id: number }>(
     `update asignaciones set estado = 'confirmada', automatica = false
-      where estado = 'sugerida' and profesor_id is not null${scope} returning slot_id`, params);
+      where estado = 'sugerida' and profesor_id is not null and slot_id in (${sub}) returning slot_id`, params);
   if (upd.length) {
+    const filtrosTxt = [
+      filtro.plantel, filtro.cuatri && `cuatri ${filtro.cuatri}`, filtro.tipo, filtro.q && `"${filtro.q}"`,
+    ].filter(Boolean).join(", ");
     await registrarCambio({
       entidad: "asignacion",
       entidadId: null,
       accion: "confirmó",
-      descripcion: `Confirmó en lote ${upd.length} sugerencia(s)${plantel ? ` en ${plantel}` : ""}`,
-      despues: { n: upd.length, plantel: plantel ?? null },
+      descripcion: `Confirmó en lote ${upd.length} sugerencia(s)${filtrosTxt ? ` (${filtrosTxt})` : ""}`,
+      despues: { n: upd.length, ...filtro },
     });
   }
   revalidatePath("/asignacion");
@@ -347,7 +377,10 @@ export async function quitarAsignacion(slotId: number, profesorId?: number) {
        left join profesores p on p.id = a.profesor_id
       where s.id = $1`, [slotId]);
   const antes = await snapAsignacion(slotId);   // foto del docente previo (para deshacer)
-  await q("update asignaciones set profesor_id=null, estado='rechazada', automatica=false where slot_id=$1", [slotId]);
+  // Borramos la fila para que la clase vuelva a estar libre y el motor pueda
+  // proponer otro docente en la próxima corrida. (Antes la dejábamos como
+  // 'rechazada'/automatica=false, lo que bloqueaba el slot para siempre.)
+  await q("delete from asignaciones where slot_id=$1", [slotId]);
   await registrarCambio({
     entidad: "asignacion",
     entidadId: slotId,
@@ -391,7 +424,7 @@ export async function eliminarDocente(profesorId: number) {
     // Recalcula alertas dentro de la MISMA transacción: sus clases quedan libres (posible
     // sin_candidato/choque) y desaparece su sobrecarga. Una sola foto coherente del estado final.
     await recomputarAlertas((sql: string, params: unknown[] = []) =>
-      client.query(sql, params).then((r) => r.rows));
+      client.query(sql, params).then((r) => r.rows), (await cicloActivo()).id);
     await client.query("commit");
   } catch (e) {
     await client.query("rollback");
@@ -469,8 +502,9 @@ export async function editarAula(aulaId: number, fd: FormData) {
 
 // Borra un salón SOLO si ninguna clase de septiembre lo usa (si no, no hace nada: protege los datos).
 export async function eliminarAula(aulaId: number) {
+  const act = await cicloActivo();
   const [u] = await q<{ n: number }>(
-    "select count(*)::int n from slots where aula_id=$1 and es_historial=false", [aulaId]);
+    `select count(*)::int n from slots where aula_id=$1 and ciclo_id=${act.id}`, [aulaId]);
   if (u.n > 0) return;   // en uso: no se borra (la UI tampoco muestra el botón)
   // Foto COMPLETA del salón ANTES de borrar (prep Fase 3: recrear tal cual).
   const [a] = await q<Record<string, unknown>>("select * from aulas where id=$1", [aulaId]);
@@ -505,7 +539,7 @@ export async function editarDocente(
   if (!nombre || !licenciatura || !aniosRaw)
     return { error: "Faltan campos obligatorios: nombre, licenciatura y años de experiencia." };
   if (!coordinador) return { error: "Indica qué coordinador(a) académico lo va a asignar." };
-  if (!esCoordinador(coordinador)) return { error: "Coordinador(a) no válido." };
+  if (!(await nombresCoordinadores()).includes(coordinador)) return { error: "Coordinador(a) no válido." };
   if (correo && !esCorreoValido(correo)) return { error: "El correo no tiene un formato válido (ej. nombre@dominio.com)." };
   const anios = Number(aniosRaw);
   if (!Number.isFinite(anios) || anios < 0) return { error: "Años de experiencia debe ser un número válido." };
@@ -602,7 +636,7 @@ export async function agregarCandidatura(profesorId: number, fd: FormData) {
   const ins = await q<{ materia_id: number }>(
     `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
      values ($1,$2,'historial',40,'Agregado por coordinación: puede dar esta materia')
-     on conflict (profesor_id, materia_id, fuente) do nothing returning materia_id`, [profesorId, m.id]);
+     on conflict (profesor_id, materia_id) do nothing returning materia_id`, [profesorId, m.id]);
   if (ins.length) {
     const [p] = await q<{ nombre: string }>("select nombre from profesores where id=$1", [profesorId]);
     await registrarCambio({
@@ -693,7 +727,7 @@ export async function procesarCVDocente(profesorId: number, _prev: ProcesarCVSta
     const ins = await q(
       `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
        values ($1,$2,'cv',$3,$4)
-       on conflict (profesor_id, materia_id, fuente) do nothing
+       on conflict (profesor_id, materia_id) do nothing
        returning materia_id`,
       [profesorId, c.materia_id, c.puntaje, c.razon]);
     if (ins.length) nuevas++;
@@ -723,7 +757,6 @@ export async function procesarCVDocente(profesorId: number, _prev: ProcesarCVSta
 
 // ---------- Edición de la materia por grupo (lo que en datos llamamos "slot") ----------
 
-const CICLO_SEPT = "2026-2027-1";   // ciclo a asignar (septiembre); el historial de mayo no se edita aquí
 const limpiarHora = (h: string) => {
   const t = h.trim();
   if (!t) return null;
@@ -739,11 +772,16 @@ const limpiarHora = (h: string) => {
 // Edita día y horario de una materia por grupo. NO re-corre el motor (no reasigna docentes),
 // pero sí recalcula las alertas: cambiar la hora puede crear o resolver choques y traslados.
 export async function editarHorario(slotId: number, fd: FormData) {
+  const act = await cicloActivo();
   const dia = String(fd.get("dia") ?? "").trim() || null;
-  const hi = limpiarHora(String(fd.get("hora_inicio") ?? ""));
-  const hf = limpiarHora(String(fd.get("hora_fin") ?? ""));
+  let hi = limpiarHora(String(fd.get("hora_inicio") ?? ""));
+  let hf = limpiarHora(String(fd.get("hora_fin") ?? ""));
+  // Las horas van en par: la detección de choques compara inicio–fin como rango.
+  // Una hora suelta (solo inicio o solo fin) no es un horario usable, así que la
+  // descartamos antes de guardar para no dejar un horario a medias.
+  if (!hi || !hf) { hi = null; hf = null; }
   const antes = await snapSlotHorario(slotId);   // foto del horario previo (para deshacer)
-  await q("update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id=$4 and es_historial=false",
+  await q(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id=$4 and ciclo_id=${act.id}`,
     [dia, hi, hf, slotId]);
   const [info] = await q<{ materia: string | null; grupo: string | null }>(
     `select m.nombre materia, g.clave grupo from slots s
@@ -764,20 +802,71 @@ export async function editarHorario(slotId: number, fd: FormData) {
   revalidatePath("/alertas");
 }
 
+// Marca una clase como "No se apertura": se oculta de la lista de trabajo y de los conteos,
+// el motor deja de asignarla y no genera alertas. NO borra nada: es reversible (Reactivar).
+// A diferencia de eliminarSlot, conserva la asignación por si se reactiva más adelante.
+export async function marcarNoApertura(slotId: number) {
+  const act = await cicloActivo();
+  const antes = await snapSlotApertura(slotId);
+  const [info] = await q<{ materia: string | null; grupo: string | null }>(
+    `select m.nombre materia, g.clave grupo from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id where s.id = $1`, [slotId]);
+  await q(`update slots set no_apertura = true where id=$1 and ciclo_id=${act.id}`, [slotId]);
+  await registrarCambio({
+    entidad: "clase",
+    entidadId: slotId,
+    accion: "editó",
+    descripcion: `Marcó "${info?.materia ?? `clase #${slotId}`}"${info?.grupo ? ` · ${info.grupo}` : ""} como que NO se apertura (oculta, reversible)`,
+    antes,
+    despues: await snapSlotApertura(slotId),
+  });
+  await recalcularAlertas();   // al ocultar la clase, sus alertas (sin docente, etc.) ya no aplican
+  revalidatePath(`/asignacion/${slotId}`);
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/");
+}
+
+// Reactiva una clase que estaba como "No se apertura": vuelve a la lista de trabajo y al motor.
+export async function reactivarSlot(slotId: number) {
+  const act = await cicloActivo();
+  const antes = await snapSlotApertura(slotId);
+  const [info] = await q<{ materia: string | null; grupo: string | null }>(
+    `select m.nombre materia, g.clave grupo from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id where s.id = $1`, [slotId]);
+  await q(`update slots set no_apertura = false where id=$1 and ciclo_id=${act.id}`, [slotId]);
+  await registrarCambio({
+    entidad: "clase",
+    entidadId: slotId,
+    accion: "editó",
+    descripcion: `Reactivó "${info?.materia ?? `clase #${slotId}`}"${info?.grupo ? ` · ${info.grupo}` : ""} (vuelve a la lista a asignar)`,
+    antes,
+    despues: await snapSlotApertura(slotId),
+  });
+  await recalcularAlertas();   // al volver, puede recuperar sus alertas (sin docente, sin aula, etc.)
+  revalidatePath(`/asignacion/${slotId}`);
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/");
+}
+
 // Elimina una materia por grupo (ej. "NO SE APERTURA"). Cascada borra su asignación y alertas.
 export async function eliminarSlot(slotId: number) {
+  const act = await cicloActivo();
   // Recordamos a qué materia/grupo apuntaba ANTES de borrar la clase, para limpiar huérfanos.
   const [ref] = await q<{ materia_id: number | null; grupo_id: number | null; materia: string | null; grupo: string | null; plantel: string | null }>(
     `select s.materia_id, s.grupo_id, m.nombre materia, g.clave grupo, s.plantel
        from slots s
        left join materias m on m.id = s.materia_id
        left join grupos g on g.id = s.grupo_id
-      where s.id=$1 and s.es_historial=false`, [slotId]);
+      where s.id=$1 and s.ciclo_id=${act.id}`, [slotId]);
   // Foto COMPLETA de la clase y su asignación ANTES de borrar (prep Fase 3: recrear tal cual).
   const [slotRow] = await q<Record<string, unknown>>("select * from slots where id=$1", [slotId]);
   const [asigRow] = await q<Record<string, unknown>>("select * from asignaciones where slot_id=$1", [slotId]);
   const fotoBorrado = { slot: slotRow ?? null, asignacion: asigRow ?? null };
-  await q("delete from slots where id=$1 and es_historial=false", [slotId]);
+  await q(`delete from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
 
   // Limpieza de huérfanos: si tras borrar la clase ya nadie usa la materia/grupo, los quitamos
   // para que no inflen el catálogo ni los conteos. Condiciones de seguridad:
@@ -815,9 +904,10 @@ export async function eliminarSlot(slotId: number) {
 
 export type CrearSlotState = { error?: string };
 
-// Crea una materia por grupo nueva en el ciclo de septiembre.
+// Crea una materia por grupo nueva en el ciclo activo (el que está seleccionado en el header).
 // La materia y el grupo se reutilizan si ya existen (por nombre/clave); si no, se crean.
 export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<CrearSlotState> {
+  const act = await cicloActivo();
   const plantel = String(fd.get("plantel") ?? "").trim();
   const materiaNombre = String(fd.get("materia") ?? "").trim();
   const grupoClave = String(fd.get("grupo") ?? "").trim();
@@ -852,9 +942,9 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
   }
 
   const [slot] = await q<{ id: number }>(
-    `insert into slots (plantel, ciclo, es_historial, grupo_id, materia_id, cuatrimestre, tipo, modalidad, dia, hora_inicio, hora_fin)
-     values ($1,$2,false,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
-    [plantel, CICLO_SEPT, grupoId, materia.id, cuatrimestre, tipo, modalidad, dia, hi, hf]);
+    `insert into slots (plantel, ciclo, ciclo_id, es_historial, grupo_id, materia_id, cuatrimestre, tipo, modalidad, dia, hora_inicio, hora_fin)
+     values ($1,$2,$3,false,$4,$5,$6,$7,$8,$9,$10,$11) returning id`,
+    [plantel, act.codigo, act.id, grupoId, materia.id, cuatrimestre, tipo, modalidad, dia, hi, hf]);
 
   await registrarCambio({
     entidad: "clase",

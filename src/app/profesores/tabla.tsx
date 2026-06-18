@@ -3,8 +3,9 @@
 // La lista completa llega como prop desde el server component (son pocas decenas de
 // docentes, ya vienen cargados), así que el filtrado es en el cliente: se escribe y
 // la tabla se reduce al instante, sin recargar la página.
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { plantelCorto, PropuestaEstado } from "@/lib/ui";
 
 export type ProfesorFila = {
@@ -24,8 +25,12 @@ export type ProfesorFila = {
 const normaliza = (s: string) =>
   s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 
+const POR_PAGINA = 25;   // cuántos docentes se muestran de inicio (y cuántos suma cada "Mostrar más")
+
 export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
+  const router = useRouter();
   const [busca, setBusca] = useState("");
+  const [visibles, setVisibles] = useState(POR_PAGINA);
 
   const filtrados = useMemo(() => {
     const t = normaliza(busca);
@@ -37,6 +42,14 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
       return terminos.every((term) => n.includes(term));
     });
   }, [busca, profes]);
+
+  // Al cambiar la búsqueda, volvemos a empezar desde los primeros 25 (si no, se quedaría
+  // mostrando "más" de una lista que ya se redujo).
+  useEffect(() => { setVisibles(POR_PAGINA); }, [busca]);
+
+  // Solo pintamos los primeros `visibles` de la lista ya filtrada: evita el scroll sin fin.
+  const mostrados = filtrados.slice(0, visibles);
+  const faltan = filtrados.length - mostrados.length;
 
   return (
     <div className="space-y-3">
@@ -62,11 +75,11 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
             </button>
           )}
         </div>
-        {busca && (
-          <span className="text-xs text-slate-400 whitespace-nowrap">
-            {filtrados.length} de {profes.length}
-          </span>
-        )}
+        <span className="text-xs text-slate-400 whitespace-nowrap ml-auto">
+          {busca
+            ? `${filtrados.length} de ${profes.length}`
+            : `${profes.length} docentes`}
+        </span>
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
@@ -82,13 +95,22 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
               <th className="px-4 py-2 font-medium text-right">Exp.</th>
               <th className="px-4 py-2 font-medium text-right">Materias candidatas</th>
               <th className="px-4 py-2 font-medium text-right">Asignadas</th>
+              <th className="px-2 py-2 font-medium text-right sticky right-0 bg-slate-50"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filtrados.map((p) => (
-              <tr key={p.id} className="hover:bg-slate-50">
+            {mostrados.map((p) => (
+              <tr
+                key={p.id}
+                onClick={() => router.push(`/profesores/${p.id}`)}
+                className="hover:bg-slate-50 cursor-pointer group"
+              >
                 <td className="px-4 py-2">
-                  <Link href={`/profesores/${p.id}`} className="text-blue-700 hover:underline font-medium">
+                  <Link
+                    href={`/profesores/${p.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-blue-700 hover:underline font-medium"
+                  >
                     {p.nombre}
                   </Link>
                 </td>
@@ -114,11 +136,20 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
                 <td className="px-4 py-2 text-right text-slate-600">{p.anios_experiencia ?? "—"}</td>
                 <td className="px-4 py-2 text-right">{p.n_cand}</td>
                 <td className="px-4 py-2 text-right">{p.n_asig}</td>
+                <td className="px-2 py-2 text-right sticky right-0 bg-white group-hover:bg-slate-50">
+                  <Link
+                    href={`/profesores/${p.id}/editar`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-block px-2.5 py-1 rounded-md border border-slate-300 text-xs text-slate-700 hover:bg-slate-100"
+                  >
+                    Editar
+                  </Link>
+                </td>
               </tr>
             ))}
             {filtrados.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-6 text-center text-sm text-slate-400">
+                <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-400">
                   {profes.length === 0
                     ? "Sin docentes con este filtro."
                     : `Ningún docente coincide con “${busca}”.`}
@@ -128,6 +159,39 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
           </tbody>
         </table>
       </div>
+
+      {faltan > 0 && (
+        <div className="flex items-center justify-center gap-3 pt-1">
+          <button
+            type="button"
+            onClick={() => setVisibles((v) => v + POR_PAGINA)}
+            className="px-4 py-2 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50"
+          >
+            Mostrar más ({Math.min(POR_PAGINA, faltan)} de {faltan} restantes)
+          </button>
+          {filtrados.length > POR_PAGINA && (
+            <button
+              type="button"
+              onClick={() => setVisibles(filtrados.length)}
+              className="text-sm text-slate-500 hover:text-slate-700 hover:underline"
+            >
+              Ver todos ({filtrados.length})
+            </button>
+          )}
+        </div>
+      )}
+      {faltan === 0 && filtrados.length > POR_PAGINA && (
+        <p className="pt-1 text-center text-xs text-slate-400">
+          Mostrando los {filtrados.length}.{" "}
+          <button
+            type="button"
+            onClick={() => setVisibles(POR_PAGINA)}
+            className="text-slate-500 hover:text-slate-700 hover:underline"
+          >
+            Volver a {POR_PAGINA}
+          </button>
+        </p>
+      )}
     </div>
   );
 }

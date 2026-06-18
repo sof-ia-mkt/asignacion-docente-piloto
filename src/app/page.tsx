@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { getResumen } from "@/lib/queries";
+import { cicloActivo } from "@/lib/ciclo";
 import { Card, Sev } from "@/lib/ui";
 import { ExportButtons } from "@/lib/export-buttons";
 import { AlertasPorTipo } from "./alertas-por-tipo";
 
 export default async function Home() {
-  const r = await getResumen();
+  const [r, act] = await Promise.all([getResumen(), cicloActivo()]);
   const sinAsignar = r.sep_total - r.asignados;
   const pct = r.sep_total ? Math.round((r.asignados / r.sep_total) * 100) : 0;
   const totalAlertas = r.alertas.reduce((a, x) => a + x.n, 0);
+  const esHistorial = act.estado === "historial";
 
   return (
     <div className="space-y-6">
@@ -16,15 +18,17 @@ export default async function Home() {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Panel de coordinación</h1>
           <p className="text-sm text-slate-500">
-            Cuatrimestre a asignar (septiembre), recomendado a partir del historial de mayo y los CV.
+            {esHistorial
+              ? `Ciclo en consulta: ${act.nombre} (historial). Solo lectura.`
+              : `Ciclo a asignar: ${act.nombre}, recomendado a partir del historial y los CV.`}
           </p>
         </div>
         <ExportButtons tipo="dashboard" params={{ vista: "resumen" }} className="shrink-0" />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Clases de septiembre" value={r.sep_total} hint="por asignar" />
-        <Card title="Con docente asignado" value={`${r.asignados}`} hint={`${pct}% · ${r.confirmados} a mano, ${r.sugeridos} por revisar`} />
+        <Card title={`Clases de ${act.nombre}`} value={r.sep_total} hint={esHistorial ? "en el ciclo" : "por asignar"} />
+        <Card title="Con docente asignado" value={`${r.asignados}`} hint={esHistorial ? `${pct}% · ya impartidas` : `${pct}% · ${r.confirmados} a mano, ${r.sugeridos} por revisar`} />
         <Card title="Sin docente" value={sinAsignar} hint="sin docente aún" />
         <Card title="Alertas" value={totalAlertas} hint="ver detalle" />
       </div>

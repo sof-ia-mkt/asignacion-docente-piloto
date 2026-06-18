@@ -63,6 +63,15 @@ export async function snapSlotHorario(slotId: number): Promise<SnapRow> {
   };
 }
 
+export async function snapSlotApertura(slotId: number): Promise<SnapRow> {
+  const [r] = await q<{ no_apertura: boolean }>(
+    "select no_apertura from slots where id=$1", [slotId]);
+  return {
+    kind: "row", tabla: "slots", clave: { id: slotId },
+    campos: r ? { no_apertura: r.no_apertura } : null,
+  };
+}
+
 export async function snapAula(aulaId: number): Promise<SnapRow> {
   const [r] = await q<{ tipo: string | null; capacidad: number | null }>(
     "select tipo, capacidad from aulas where id=$1", [aulaId]);

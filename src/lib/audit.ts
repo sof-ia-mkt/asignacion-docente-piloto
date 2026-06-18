@@ -7,6 +7,7 @@
 //
 // SOLO servidor (escribe en la base vía db.ts).
 import { q } from "./db";
+import { nombreUsuarioActual } from "./usuario-actual";
 
 // Qué entidad se tocó. Texto cerrado para que la pantalla pueda filtrar y etiquetar.
 export type EntidadBitacora =
@@ -47,11 +48,13 @@ const ACTOR_POR_DEFECTO = "Coordinación";
 /** Anota un cambio en la bitácora. Nunca lanza: si falla, lo registra en consola y sigue. */
 export async function registrarCambio(c: CambioBitacora): Promise<void> {
   try {
+    // Actor: el que se pase explícito; si no, la persona logueada; si no, el genérico.
+    const actor = c.actor ?? (await nombreUsuarioActual()) ?? ACTOR_POR_DEFECTO;
     await q(
       `insert into bitacora (actor, entidad, entidad_id, accion, descripcion, datos_antes, datos_despues)
        values ($1,$2,$3,$4,$5,$6,$7)`,
       [
-        c.actor ?? ACTOR_POR_DEFECTO,
+        actor,
         c.entidad,
         c.entidadId ?? null,
         c.accion,

@@ -20,7 +20,8 @@ const overlap = (a, b) =>
   a.ini < b.fin && b.ini < a.fin;
 
 // Devuelve el arreglo de alertas calculado desde el estado actual. NO escribe.
-export async function calcularAlertas(query) {
+// `cicloId` = el ciclo que se está asignando (las alertas son sobre ESE ciclo).
+export async function calcularAlertas(query, cicloId) {
   // candidatos fuertes por materia
   const cand = await query(
     `select mc.materia_id, mc.profesor_id, max(p.nombre) nombre, sum(mc.puntaje)::int puntaje
@@ -42,7 +43,7 @@ export async function calcularAlertas(query) {
        left join materias m on m.id = s.materia_id
        left join grupos g on g.id = s.grupo_id
        left join asignaciones a on a.slot_id = s.id and a.profesor_id is not null
-      where s.es_historial = false`);
+      where s.ciclo_id = $1 and not s.no_apertura`, [cicloId]);
   const slots = rows.map((s) => ({ ...s, ini: toMin(s.hora_inicio), fin: toMin(s.hora_fin) }));
 
   // horario y carga por profesor, a partir de las asignaciones actuales
@@ -191,14 +192,16 @@ export async function calcularAlertas(query) {
 
 // Recalcula y GUARDA (borra las anteriores e inserta las nuevas). Devuelve un resumen.
 // El control de transacción lo decide quien llama (la app la envuelve; el motor ya está en una).
-export async function recomputarAlertas(query) {
+export async function recomputarAlertas(query, cicloId) {
   // Candado serializador (a nivel de transacción): el patrón "borrar todas + insertar" NO es
   // seguro bajo concurrencia — dos recálculos encimados duplican el set completo de alertas.
   // Este advisory lock obliga a que se ejecuten uno por uno; se libera solo al commit/rollback
   // de quien nos envuelve (la app y el motor siempre nos llaman dentro de una transacción).
   await query("select pg_advisory_xact_lock(4928134751)", []);
-  const alertas = await calcularAlertas(query);
-  await query("delete from alertas", []);
+  const alertas = await calcularAlertas(query, cicloId);
+  // Solo borramos las alertas de ESTE ciclo: las de otros ciclos conviven (cada pantalla
+  // filtra por el ciclo activo), así no se pierden ni se muestran viejas al cambiar de ciclo.
+  await query("delete from alertas where ciclo_id = $1", [cicloId]);
   // Inserta TODAS las alertas en lotes multi-fila, no una por una. Con ~440 alertas, un
   // insert por fila son ~440 viajes de ida y vuelta al pooler remoto (~16 s, suficiente para
   // que la función serverless se corte en producción). Por lotes son 1-2 viajes (~100 ms).
@@ -208,11 +211,11 @@ export async function recomputarAlertas(query) {
     const params = [];
     const filas = trozo.map((al) => {
       const b = params.length;
-      params.push(al.tipo, al.severidad, al.slot_id, al.slot_id_2, al.profesor_id, al.detalle);
-      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6})`;
+      params.push(al.tipo, al.severidad, al.slot_id, al.slot_id_2, al.profesor_id, al.detalle, cicloId);
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7})`;
     });
     await query(
-      `insert into alertas (tipo, severidad, slot_id, slot_id_2, profesor_id, detalle) values ${filas.join(",")}`,
+      `insert into alertas (tipo, severidad, slot_id, slot_id_2, profesor_id, detalle, ciclo_id) values ${filas.join(",")}`,
       params);
   }
   const porTipo = {};

@@ -17,6 +17,18 @@ import { recomputarAlertas } from "../src/lib/alertas-core.mjs";
 const env = loadEnv();
 const SCORE_MIN = 25;          // umbral opción A (historial 40, cv-alta 25)
 const PLANTEL_BONUS = 20;      // dio la materia EN ESTE plantel => +20 (se prefiere el fit local)
+// --- Reparto de carga (evita que 4-5 docentes acaparen casi todo) ---
+// Antes el motor daba cada slot al candidato de MAYOR puntaje sin mirar cuántos ya tenía:
+// los docentes con mucho historial acababan con 80-98 materias y el resto casi vacío.
+// Ahora a cada candidato se le resta una penalización por su carga acumulada:
+//   - leve por debajo del objetivo (sólo desempata entre fits parecidos),
+//   - fuerte por encima (sólo se le sigue cargando si NO hay mejor opción).
+// Nunca deja un slot sin docente por tope: si el único candidato ya va sobrecargado,
+// igual se le asigna (estado 'sugerida') y la alerta de sobrecarga lo marca para coordinación.
+const PENAL_CARGA = 2;         // reparto fino: entre dos fits parecidos, gana el menos cargado
+const CARGA_OBJETIVO = 28;     // carga "sana" por docente; al pasarla se penaliza fuerte
+const PENAL_SOBRE = 8;         // castigo extra por cada slot por encima del objetivo
+const penalCarga = (n) => n * PENAL_CARGA + (n > CARGA_OBJETIVO ? (n - CARGA_OBJETIVO) * PENAL_SOBRE : 0);
 // (Los umbrales de sobrecarga, traslado, etc. viven en el módulo de alertas: ahí se diagnostica.)
 // "Docentes" que en realidad son notas del Excel, no personas: no son asignables.
 const PLACEHOLDERS = ["CAMBIO DE TURNO", "DOCENTE NUEVO", "NO SE APERTURA", "NOSE APERTURA"];
@@ -25,6 +37,16 @@ const db = new pg.Client({ connectionString: env.SUPABASE_DB_URL, connectionTime
 await db.connect();
 // Adaptador para el módulo de alertas compartido: corre sobre ESTE cliente (misma transacción).
 const query = async (sql, params = []) => (await db.query(sql, params)).rows;
+
+// Ciclo a ASIGNAR = el de planeación activo (el que se está armando). Historial = los cerrados,
+// que alimentan la señal "ya dio la materia". Se leen de la tabla `ciclos` (dimensión real).
+const [planeacion] = (await db.query(
+  `select id, codigo from ciclos where estado='planeacion' order by es_activo desc, orden desc limit 1`)).rows;
+if (!planeacion) { console.error("No hay ciclo en estado 'planeacion' que asignar."); process.exit(1); }
+const CICLO_ID = planeacion.id;
+const histIds = (await db.query(`select id from ciclos where estado='historial'`)).rows.map((r) => r.id);
+const SQL_HIST = `s.ciclo_id in (${histIds.length ? histIds.join(",") : "-1"})`;
+console.log(`Asignando ciclo ${planeacion.codigo} (id ${CICLO_ID}); historial: [${histIds.join(",") || "ninguno"}]`);
 
 const toMin = (h) => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + b; };
 const overlap = (a, b) =>
@@ -52,7 +74,7 @@ const slots = (await db.query(
      from slots s
      left join materias m on m.id = s.materia_id
      left join grupos g on g.id = s.grupo_id
-    where s.es_historial = false`)).rows
+    where s.ciclo_id = $1 and not s.no_apertura`, [CICLO_ID])).rows
   .map((s) => ({ ...s, ini: toMin(s.hora_inicio), fin: toMin(s.hora_fin) }));
 const slotsById = new Map(slots.map((s) => [s.id, s]));
 
@@ -61,7 +83,7 @@ const slotsById = new Map(slots.map((s) => [s.id, s]));
 const histPlantel = new Map();   // `${profesor_id}|${materia_id}` -> Set<plantel>
 for (const r of (await db.query(
   `select distinct docente_id, materia_id, plantel from slots
-    where es_historial and docente_id is not null and materia_id is not null`)).rows) {
+    where ${SQL_HIST.replace(/s\.ciclo_id/, "ciclo_id")} and docente_id is not null and materia_id is not null`)).rows) {
   const k = `${r.docente_id}|${r.materia_id}`;
   if (!histPlantel.has(k)) histPlantel.set(k, new Set());
   histPlantel.get(k).add(r.plantel);
@@ -120,10 +142,13 @@ for (const s of slots) {
   // Puntaje efectivo PARA ESTE SLOT: +20 si el candidato ya dio la materia en este plantel.
   // Así, entre dos que la dieron, gana el local; el de otro plantel sigue siendo válido (queda abajo).
   const score = (c) => c.puntaje + (dioEnPlantel(c.profesor_id, s.materia_id, s.plantel) ? PLANTEL_BONUS : 0);
-  const ordenados = [...cands].sort((a, b) => score(b) - score(a));
+  // Puntaje final = ajuste por plantel − penalización por carga acumulada (reparto).
+  const efectivo = (c) => score(c) - penalCarga(carga.get(c.profesor_id) || 0);
 
   // Restricción dura: el candidato debe estar LIBRE a esa hora (nadie en 2 lugares a la vez).
-  const elegido = ordenados.find((c) => !(horario.get(c.profesor_id) || []).some((h) => overlap(h, s)));
+  const libres = cands.filter((c) => !(horario.get(c.profesor_id) || []).some((h) => overlap(h, s)));
+  // De los libres, el de mayor puntaje efectivo (mejor fit ya descontada su carga).
+  const elegido = libres.reduce((mejor, c) => (mejor == null || efectivo(c) > efectivo(mejor) ? c : mejor), null);
 
   if (!elegido) {
     // Todos los candidatos fuertes ya están ocupados a esa hora -> queda sin maestro.
@@ -189,13 +214,13 @@ for (const s of presenciales) {
     sinAula++;   // solo para el resumen; la alerta sin_aula la levanta el módulo compartido
   }
 }
-await db.query("update slots set aula_id = null where es_historial = false and aula_manual = false");
+await db.query("update slots set aula_id = null where ciclo_id = $1 and aula_manual = false", [CICLO_ID]);
 for (const [sid, aid] of aulaDe) {
   await db.query("update slots set aula_id = $1 where id = $2", [aid, sid]);
 }
 
 // ---- alertas: una sola fuente de verdad, sobre el estado ya escrito (docentes + aulas) ----
-const { total: alertasTotal, porTipo } = await recomputarAlertas(query);
+const { total: alertasTotal, porTipo } = await recomputarAlertas(query, CICLO_ID);
 
 await db.query("commit");
 

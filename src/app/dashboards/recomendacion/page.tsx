@@ -41,9 +41,10 @@ export default async function RecomendacionPage({
 
       <Panel>
         <p className="text-sm text-slate-600">
-          Hoy la recomendación se apoya casi toda en el <b>historial real de mayo</b> (la señal más fuerte, +40).
-          El <b>CV</b> aporta a {conCV} de {totalAsig} asignaciones. Procesar más CVs ampliaría la cobertura hacia
-          materias nuevas o docentes sin historial — ese es el margen de crecimiento de la parte de IA.
+          Hoy la recomendación se apoya casi toda en el <b>historial real</b> (lo que cada docente ya dio en
+          ciclos anteriores: la señal más fuerte). El <b>CV</b> aporta a {conCV} de {totalAsig} asignaciones.
+          Procesar más CVs ampliaría la cobertura hacia materias nuevas o docentes sin historial — ese es el
+          margen de crecimiento de la parte de IA.
         </p>
       </Panel>
     </div>

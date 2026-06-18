@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { getSlotsSeptiembre, getPlanteles, contarSugeridas, getFacetasSlots, getConteoPorEstado } from "@/lib/queries";
-import { Estado, TipoClase, planCorto, plantelCorto } from "@/lib/ui";
+import { cicloActivo } from "@/lib/ciclo";
+import { plantelCorto } from "@/lib/ui";
 import { confirmarSugeridas } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { ExportButtons } from "@/lib/export-buttons";
 import { AsignacionFiltros } from "./filtros";
+import { TablaAsignacion } from "./tabla-asignacion";
 
 export default async function AsignacionPage({
   searchParams,
@@ -16,14 +18,23 @@ export default async function AsignacionPage({
   const cuatri = sp.cuatri ?? "";
   const tipo = sp.tipo ?? "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const [{ rows, total, pages, limit }, planteles, sugeridas, facetas, conteo] = await Promise.all([
+  const [{ rows, total, pages, limit }, planteles, sugeridas, facetas, conteo, act] = await Promise.all([
     getSlotsSeptiembre({ estado, q: qstr, plantel, cuatri, tipo, page }),
     getPlanteles(),
-    contarSugeridas(plantel),
+    contarSugeridas({ plantel, cuatri, tipo, q: qstr }),
     getFacetasSlots(plantel),
     getConteoPorEstado({ q: qstr, plantel, cuatri, tipo }),
+    cicloActivo(),
   ]);
-  const ambito = plantel ? plantelCorto(plantel) : "todos los planteles";
+  // Texto que describe el alcance EXACTO del botón "Aceptar N sugeridas": los mismos filtros
+  // que la lista. Así el coordinador sabe qué va a confirmar antes de apretar.
+  const partesAmbito = [
+    plantel ? plantelCorto(plantel) : null,
+    cuatri ? `cuatri ${cuatri}` : null,
+    tipo ? tipo : null,
+    qstr ? `"${qstr}"` : null,
+  ].filter(Boolean);
+  const ambito = partesAmbito.length ? partesAmbito.join(", ") : "todos los planteles";
 
   // Construye un href de /asignacion conservando los filtros actuales y cambiando uno.
   // Al cambiar cualquier filtro se vuelve a la página 1 (salvo que se cambie 'page').
@@ -45,7 +56,7 @@ export default async function AsignacionPage({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Asignación de septiembre</h1>
+          <h1 className="text-xl font-semibold text-slate-900">Asignación · {act.nombre}</h1>
           <p className="text-sm text-slate-500">
             {total} materias por grupo{plantel ? ` en ${plantelCorto(plantel)}` : " (todos los planteles)"}. Sin asignar aparecen primero.
           </p>
@@ -53,9 +64,12 @@ export default async function AsignacionPage({
         <div className="flex items-center gap-2 shrink-0">
           <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri, tipo }} />
           {sugeridas > 0 && (
-            <form action={confirmarSugeridas.bind(null, plantel || undefined)}>
+            <form action={confirmarSugeridas.bind(null, {
+              plantel: plantel || undefined, cuatri: cuatri || undefined,
+              tipo: tipo || undefined, q: qstr || undefined,
+            })}>
               <ConfirmButton
-                message={`¿Aceptar las ${sugeridas} sugerencias del sistema en ${ambito}? Quedarán como "Asignada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
+                message={`¿Aceptar las ${sugeridas} sugerencias que estás viendo (${ambito})? Quedarán como "Asignada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
                 className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm whitespace-nowrap hover:bg-green-700">
                 Aceptar {sugeridas} sugerida{sugeridas === 1 ? "" : "s"}
               </ConfirmButton>
@@ -71,46 +85,7 @@ export default async function AsignacionPage({
         estado={estado} plantel={plantel} cuatri={cuatri} tipo={tipo} qstr={qstr}
         planteles={planteles} cuatris={facetas.cuatris} tipos={facetas.tipos} conteo={conteo} />
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
-            <tr className="text-left">
-              <th className="px-4 py-2 font-medium">Plantel</th>
-              <th className="px-4 py-2 font-medium">Materia</th>
-              <th className="px-4 py-2 font-medium">Plan</th>
-              <th className="px-4 py-2 font-medium">Cuatri</th>
-              <th className="px-4 py-2 font-medium">Tipo</th>
-              <th className="px-4 py-2 font-medium">Grupo</th>
-              <th className="px-4 py-2 font-medium text-right">Alumnos</th>
-              <th className="px-4 py-2 font-medium">Aula</th>
-              <th className="px-4 py-2 font-medium">Horario</th>
-              <th className="px-4 py-2 font-medium">Docente</th>
-              <th className="px-4 py-2 font-medium">Estado</th>
-              <th className="px-4 py-2"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((s) => (
-              <tr key={s.id} className="hover:bg-slate-50">
-                <td className="px-4 py-2 text-slate-500">{plantelCorto(s.plantel)}</td>
-                <td className="px-4 py-2 text-slate-800">{s.materia ?? "—"}</td>
-                <td className="px-4 py-2 text-slate-600">{planCorto(s.plan)}</td>
-                <td className="px-4 py-2 text-slate-600">{s.cuatrimestre ?? "—"}</td>
-                <td className="px-4 py-2"><TipoClase t={s.tipo} /></td>
-                <td className="px-4 py-2 text-slate-600">{s.grupo ?? "—"}</td>
-                <td className="px-4 py-2 text-right text-slate-600">{s.alumnos ?? <span className="text-slate-300">—</span>}</td>
-                <td className="px-4 py-2 text-slate-600">{s.aula ?? <span className="text-slate-300">—</span>}</td>
-                <td className="px-4 py-2 text-slate-600">{s.dia && s.dia !== "N/A" && s.hora_inicio && s.hora_fin ? `${s.dia} ${s.hora_inicio}-${s.hora_fin}` : <span className="text-slate-300">—</span>}</td>
-                <td className="px-4 py-2 text-slate-700">{s.docente ?? <span className="text-slate-400">sin docente</span>}</td>
-                <td className="px-4 py-2"><Estado e={s.estado} /></td>
-                <td className="px-4 py-2 text-right">
-                  <Link href={`/asignacion/${s.id}`} className="text-blue-700 hover:underline">Revisar</Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <TablaAsignacion rows={rows} parked={estado === "no_apertura"} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-slate-400">
           {total === 0

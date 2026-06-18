@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSlot, buscarProfesores } from "@/lib/queries";
+import { cicloActivo } from "@/lib/ciclo";
 import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge, esAsincronica } from "@/lib/ui";
-import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, editarHorario, eliminarSlot } from "@/app/actions";
+import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, editarHorario, eliminarSlot, marcarNoApertura, reactivarSlot } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 
 const DIAS = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO", "N/A"];
@@ -17,7 +18,7 @@ export default async function SlotPage({
   const { id } = await params;
   const buscar = (await searchParams).buscar ?? "";
   const slotId = Number(id);
-  const data = await getSlot(slotId);
+  const [data, act] = await Promise.all([getSlot(slotId), cicloActivo()]);
   if (!data) notFound();
   const { slot, candidatos, aulas } = data;
   const manuales = await buscarProfesores(
@@ -65,6 +66,22 @@ export default async function SlotPage({
     <div className="space-y-5">
       <Link href="/asignacion" className="text-sm text-blue-700 hover:underline">← Asignación</Link>
 
+      {/* Banner cuando la clase está marcada como "No se apertura": está oculta de la lista
+          y no cuenta en ningún lado. Desde aquí se puede reactivar (es reversible). */}
+      {slot.no_apertura && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 flex items-center justify-between gap-3">
+          <p className="text-sm text-amber-900">
+            <span className="font-medium">Esta materia está marcada como “No se apertura”.</span>{" "}
+            Está oculta de la lista de asignación y no cuenta en los totales ni en las alertas.
+          </p>
+          <form action={reactivarSlot.bind(null, slotId)}>
+            <button className="px-3 py-1.5 rounded-md border border-green-300 bg-green-100 text-green-800 text-sm whitespace-nowrap hover:bg-green-200">
+              Reactivar
+            </button>
+          </form>
+        </div>
+      )}
+
       {/* Letrero de motivo: solo cuando la clase está SIN docente. Explica en una línea por qué
           el sistema no la asignó, para no tener que interpretar la tabla de candidatos. */}
       {!slot.docente && (
@@ -74,7 +91,7 @@ export default async function SlotPage({
             <>esta clase presencial aún no tiene horario. Captura el día y la hora abajo
               (en <span className="font-medium">Día y horario</span>) para poder asignar un docente; así el sistema evita empalmarlo con otra clase.</>
           ) : candidatos.length === 0 ? (
-            <>ningún docente califica para esta materia (ni por su historial de mayo ni por su CV con
+            <>ningún docente califica para esta materia (ni por su historial de ciclos anteriores ni por su CV con
               confianza alta). Asígnalo a mano más abajo o <Link href="/profesores/nuevo" className="underline">da de alta un docente nuevo</Link>.</>
           ) : todosOcupados ? (
             <>hay {candidatos.length} {candidatos.length === 1 ? "candidato capaz" : "candidatos capaces"},
@@ -116,7 +133,7 @@ export default async function SlotPage({
           {slot.docente && (
             <div className="mt-3 flex gap-2">
               {slot.estado === "sugerida" && (
-                <form action={confirmar.bind(null, slotId)}>
+                <form action={confirmar.bind(null, slotId, undefined)}>
                   <button className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm">Aceptar sugerencia</button>
                 </form>
               )}
@@ -281,7 +298,7 @@ export default async function SlotPage({
           </table>
         )}
         <p className="mt-3 text-xs text-slate-400">
-          La carga es el número de materias ya asignadas a ese docente en septiembre.
+          La carga es el número de materias ya asignadas a ese docente en {act.nombre}.
           {" "}<span className="text-green-700">Libre</span> / <span className="text-red-700">choca</span> indica si ya tiene otra clase a esta misma hora.
           {requiereHorario
             ? " Esta clase presencial aún no tiene horario: captúralo arriba para poder asignar (así se evita empalmar al docente)."
@@ -356,12 +373,38 @@ export default async function SlotPage({
         </div>
       </div>
 
+      {/* Quitar esta materia del cuatrimestre. Dos caminos:
+          1) Recomendado y REVERSIBLE: "No se apertura" → la oculta de la lista pero no la borra
+             (se recupera en la pestaña "No se abren"). Para errores del Excel o materias que no se abren.
+          2) Permanente: "Eliminar" → borra el slot, su asignación y alertas. No se puede deshacer. */}
+      {!slot.no_apertura && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-medium text-amber-900">Marcar como “No se apertura”</h2>
+              <p className="mt-0.5 text-xs text-amber-700">
+                Úsalo si esta materia no se va a abrir este cuatrimestre. Se oculta de la lista y deja de contar,
+                pero <span className="font-medium">no se borra</span>: puedes recuperarla en la pestaña “No se abren”.
+              </p>
+            </div>
+            <form action={marcarNoApertura.bind(null, slotId)}>
+              <ConfirmButton
+                message={`¿Marcar "${slot.materia ?? "esta clase"}"${slot.grupo ? ` · ${slot.grupo}` : ""} como que NO se apertura?\n\nSe oculta de la lista y deja de contar. No se borra: puedes recuperarla en la pestaña "No se abren".`}
+                className="px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm whitespace-nowrap hover:bg-amber-700">
+                No se apertura
+              </ConfirmButton>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border border-red-200 bg-red-50 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium text-red-800">Eliminar esta materia por grupo</h2>
             <p className="mt-0.5 text-xs text-red-600">
-              Úsalo si esta materia no se va a abrir (ej. &quot;NO SE APERTURA&quot;). Se borra junto con su asignación y alertas. No se puede deshacer.
+              Borrado permanente: se elimina junto con su asignación y alertas. <span className="font-medium">No se puede deshacer.</span>
+              {" "}Si solo no se va a abrir, mejor usa “No se apertura” (arriba), que es reversible.
             </p>
           </div>
           <form action={eliminarSlot.bind(null, slotId)}>

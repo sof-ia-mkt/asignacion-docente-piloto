@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getProfesores, getProfesoresConteo } from "@/lib/queries";
-import { COORDINADORES, esCoordinador } from "@/lib/ui";
+import { nombresCoordinadores } from "@/lib/usuarios-db";
 import { ExportButtons } from "@/lib/export-buttons";
 import { TablaProfesores } from "./tabla";
 
@@ -16,7 +16,8 @@ export default async function ProfesoresPage({
   const sp = await searchParams;
   const cvRaw = sp.cv ?? "";
   const cv = (cvRaw === "cv" || cvRaw === "sincv" ? cvRaw : "") as "" | "cv" | "sincv";
-  const coord = esCoordinador(sp.coord ?? "") ? (sp.coord as string) : "";
+  const coordinadores = await nombresCoordinadores();
+  const coord = coordinadores.includes(sp.coord ?? "") ? (sp.coord as string) : "";
   const [profes, conteo] = await Promise.all([getProfesores(cv, coord), getProfesoresConteo()]);
   const sinCv = conteo.total - conteo.con_cv;
 
@@ -60,7 +61,7 @@ export default async function ProfesoresPage({
         <span className="mx-2 h-5 w-px bg-slate-200" aria-hidden />
         <span className="text-xs text-slate-400 mr-1">Coordinación:</span>
         <Link href={href({ coord: "" })} className={chip(coord === "")}>Todas</Link>
-        {COORDINADORES.map((c) => (
+        {coordinadores.map((c) => (
           <Link key={c} href={href({ coord: c })} className={chip(coord === c)}>{c}</Link>
         ))}
       </div>

@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProfesor } from "@/lib/queries";
+import { cicloActivo } from "@/lib/ciclo";
 import { Estado, PropuestaEstado, TipoClase, plantelCorto, cicloLabel } from "@/lib/ui";
-import { quitarAsignacion, eliminarDocente } from "@/app/actions";
+import { quitarAsignacion, eliminarDocente, confirmar } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { ExportButtons } from "@/lib/export-buttons";
 import { MateriasAsignables, type GrupoAbierto } from "./materias-asignables";
@@ -10,7 +11,7 @@ import { PropuestaAcciones } from "./propuesta-acciones";
 
 export default async function ProfesorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await getProfesor(Number(id));
+  const [data, act] = await Promise.all([getProfesor(Number(id)), cicloActivo()]);
   if (!data) notFound();
   const { prof, candidatas, asignaciones, historial, gruposAbiertos } = data;
 
@@ -172,19 +173,19 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
 
       {/* Números rápidos */}
       <div className="grid grid-cols-3 gap-2">
-        {stat(historial.length, "Clases que dio (mayo)", "text-slate-700")}
-        {stat(asignaciones.length, "Asignadas en septiembre", "text-green-700")}
+        {stat(historial.length, "Clases que dio antes", "text-slate-700")}
+        {stat(asignaciones.length, `Asignadas en ${act.nombre}`, "text-green-700")}
         {stat(candidatas.length, "Materias que puede dar", "text-blue-700")}
       </div>
 
       {/* Lo que da AHORA: lo más accionable arriba */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-medium text-slate-700">Clases de septiembre asignadas a este docente</h2>
+        <h2 className="text-sm font-medium text-slate-700">Clases de {act.nombre} asignadas a este docente</h2>
         <p className="mb-3 text-xs text-slate-400">
           &quot;Sugerida&quot; = el sistema la propuso, falta revisarla · &quot;Asignada&quot; = coordinación la fijó en esa clase. (La propuesta del docente se confirma arriba, una vez enviada.)
         </p>
         {asignaciones.length === 0 ? (
-          <p className="text-sm text-slate-400">Todavía no tiene clases asignadas para septiembre.</p>
+          <p className="text-sm text-slate-400">Todavía no tiene clases asignadas para {act.nombre}.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -210,6 +211,15 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
                     <td className="py-1.5"><Estado e={a.estado} /></td>
                     <td className="py-1.5 text-right whitespace-nowrap">
                       <div className="flex justify-end gap-2">
+                        {a.estado === "sugerida" && (
+                          <form action={confirmar.bind(null, a.slot_id, prof.id)}>
+                            <ConfirmButton
+                              message={`¿Asignar a ${prof.nombre} en "${a.materia}"${a.grupo ? ` · ${a.grupo}` : ""}? La clase quedará fijada (Asignada).`}
+                              className="text-green-700 hover:underline text-xs font-medium">
+                              Asignar
+                            </ConfirmButton>
+                          </form>
+                        )}
                         <Link href={`/asignacion/${a.slot_id}`} className="text-blue-700 hover:underline text-xs">Ver</Link>
                         <form action={quitarAsignacion.bind(null, a.slot_id, prof.id)}>
                           <ConfirmButton
@@ -230,9 +240,9 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
 
       {/* Lo que YA dio: historial real */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-medium text-slate-700 mb-3">Clases que dio antes (historial de mayo)</h2>
+        <h2 className="text-sm font-medium text-slate-700 mb-3">Clases que dio antes (ciclos anteriores)</h2>
         {historial.length === 0 ? (
-          <p className="text-sm text-slate-400">No hay registro de clases que haya dado en el ciclo de mayo.</p>
+          <p className="text-sm text-slate-400">No hay registro de clases que haya dado en ciclos anteriores.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -277,14 +287,14 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
               Úsalo si el docente ya no va (renunció, se duplicó, etc.). Se elimina del sistema junto con su
               CV y las materias que podía dar.
               {asignaciones.length > 0
-                ? ` Sus ${asignaciones.length} clase${asignaciones.length === 1 ? "" : "s"} de septiembre quedarán sin maestro (libres para reasignar).`
-                : " No tiene clases asignadas en septiembre."}
+                ? ` Sus ${asignaciones.length} clase${asignaciones.length === 1 ? "" : "s"} de ${act.nombre} quedarán sin maestro (libres para reasignar).`
+                : ` No tiene clases asignadas en ${act.nombre}.`}
               {" "}No se puede deshacer.
             </p>
           </div>
           <form action={eliminarDocente.bind(null, prof.id)}>
             <ConfirmButton
-              message={`¿Borrar definitivamente a ${prof.nombre}? Se elimina del sistema junto con su CV y las materias que podía dar.${asignaciones.length > 0 ? ` Sus ${asignaciones.length} clase(s) de septiembre quedarán sin maestro.` : ""} Esto NO se puede deshacer.`}
+              message={`¿Borrar definitivamente a ${prof.nombre}? Se elimina del sistema junto con su CV y las materias que podía dar.${asignaciones.length > 0 ? ` Sus ${asignaciones.length} clase(s) de ${act.nombre} quedarán sin maestro.` : ""} Esto NO se puede deshacer.`}
               className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">
               Borrar docente
             </ConfirmButton>

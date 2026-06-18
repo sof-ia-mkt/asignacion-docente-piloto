@@ -23,7 +23,9 @@ export default async function RiesgosPage({
     .sort((a, b) => b.n - a.n)
     .map((t) => ({ tipo: t.tipo, n: t.n, color: SEV_COLOR[t.sev] }));
   const total = tipoData.reduce((a, x) => a + x.n, 0);
-  const altas = [...byTipo.values()].filter((t) => t.sev === "alta").reduce((a, x) => a + x.n, 0);
+  // "Prioridad alta" = alertas individuales con severidad 'alta' (mismo criterio que Inicio y Alertas).
+  // OJO: no contar por tipo (un tipo puede mezclar altas y medias), si no el número se infla.
+  const altas = porTipo.filter((r) => r.severidad === "alta").reduce((a, x) => a + x.n, 0);
 
   return (
     <div className="space-y-4">

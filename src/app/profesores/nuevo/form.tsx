@@ -1,12 +1,11 @@
 "use client";
 import { useActionState, useState } from "react";
 import { crearDocente, type CrearDocenteState } from "@/app/actions";
-import { COORDINADORES } from "@/lib/ui";
 
 const input = "w-full px-3 py-2 rounded-md border border-slate-300 text-sm";
 const label = "block text-sm font-medium text-slate-700 mb-1";
 
-export function NuevoDocenteForm({ materias }: { materias: { id: number; nombre: string }[] }) {
+export function NuevoDocenteForm({ materias, coordinadores }: { materias: { id: number; nombre: string }[]; coordinadores: string[] }) {
   const [state, action, pending] = useActionState<CrearDocenteState, FormData>(crearDocente, {});
   const [camino, setCamino] = useState<"manual" | "cv">("manual");
   const [filtro, setFiltro] = useState("");
@@ -42,7 +41,7 @@ export function NuevoDocenteForm({ materias }: { materias: { id: number; nombre:
           <label className={label}>Coordinación académica * <span className="text-slate-400 font-normal">— quién lo va a asignar</span></label>
           <select name="coordinador" required defaultValue="" className={input}>
             <option value="" disabled>— Selecciona —</option>
-            {COORDINADORES.map((c) => <option key={c} value={c}>{c}</option>)}
+            {coordinadores.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div>

@@ -1,12 +1,5 @@
 // Componentes visuales compartidos (server-safe, sin estado de cliente).
 
-// Coordinadores(as) académicos que pueden asignar docentes. Lista única usada por
-// formularios, acciones (validación) y filtros. Editar aquí para cambiar el catálogo.
-export const COORDINADORES = ["Ammy", "Daniel", "Brenda"] as const;
-export type Coordinador = (typeof COORDINADORES)[number];
-export const esCoordinador = (v: string): v is Coordinador =>
-  (COORDINADORES as readonly string[]).includes(v);
-
 // Una clase ASINCRÓNICA (en línea, a ritmo del alumno) NO ocupa una hora fija: por diseño
 // no lleva día/hora y no puede empalmarse con nada. Las demás (presencial/síncrona) sí ocupan
 // un horario real. Se usa para decidir si exigir horario antes de asignar docente.
@@ -43,6 +36,25 @@ export function Estado({ e }: { e: string | null }) {
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium border ${EST[e] ?? EST.rechazada}`}>
       {EST_LABEL[e] ?? e}
+    </span>
+  );
+}
+
+// Fuerza de la recomendación, traducida del puntaje a una palabra que el coordinador pueda leer
+// de un vistazo (sin tener que conocer los números internos del motor). El puntaje suma señales:
+// disponibilidad declarada (50), ya la dio antes (40), CV (25), mismo plantel (+20).
+export function Fuerza({ puntaje, razon }: { puntaje: number | null; razon?: string | null }) {
+  if (puntaje == null) return null;
+  const nivel = puntaje >= 60 ? "alta" : puntaje >= 40 ? "media" : "baja";
+  const cls = nivel === "alta"
+    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+    : nivel === "media"
+      ? "bg-amber-100 text-amber-800 border-amber-200"
+      : "bg-slate-100 text-slate-600 border-slate-200";
+  return (
+    <span title={razon ?? undefined}
+      className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-medium border ${cls}`}>
+      coincidencia {nivel}
     </span>
   );
 }

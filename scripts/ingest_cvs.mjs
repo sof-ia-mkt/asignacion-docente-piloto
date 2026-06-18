@@ -123,7 +123,7 @@ for (const doc of data.docentes_piloto) {
     await db.query(
       `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
        values ($1,$2,'cv',$3,$4)
-       on conflict (profesor_id, materia_id, fuente) do update set puntaje=excluded.puntaje, razon=excluded.razon`,
+       on conflict (profesor_id, materia_id) do update set puntaje=greatest(materia_candidatos.puntaje, excluded.puntaje)`,
       [pid, mid, PUNTAJE[item.confianza] ?? 8, `CV (${item.confianza}): ${item.motivo}`]);
     n++;
   }
