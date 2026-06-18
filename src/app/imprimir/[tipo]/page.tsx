@@ -74,7 +74,7 @@ export default async function ImprimirPage({
       ))}
 
       <footer className="mt-6 text-xs text-slate-400 break-inside-avoid">
-        Piloto CENYCA — septiembre se asigna a partir del historial de mayo + CV.
+        CENYCA — septiembre se asigna a partir del historial de mayo + CV.
       </footer>
     </div>
   );
