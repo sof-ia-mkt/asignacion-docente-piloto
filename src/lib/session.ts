@@ -31,3 +31,17 @@ export async function sesionActual(): Promise<UsuarioRow | null> {
   if (!login) return null;
   return usuarioActivo(login);
 }
+
+/**
+ * Candado para server actions que MUTAN datos: exige sesión válida y que la persona
+ * no tenga pendiente el cambio de contraseña. El proxy protege las páginas, pero las
+ * server actions (POST) no re-renderizan el layout, así que sin esto un usuario con la
+ * temporal podría mutar antes de cambiarla. Devuelve el usuario; si no, lanza.
+ */
+export async function exigirSesionActiva(): Promise<UsuarioRow> {
+  const yo = await sesionActual();
+  if (!yo) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión para continuar.");
+  if (yo.debe_cambiar_password)
+    throw new Error("Debes cambiar tu contraseña temporal antes de hacer cambios en la plataforma.");
+  return yo;
+}

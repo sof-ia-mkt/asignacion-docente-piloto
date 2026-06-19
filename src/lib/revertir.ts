@@ -9,8 +9,13 @@
 //
 // El motor es GENÉRICO: no sabe de asignaciones ni aulas, solo aplica Snaps {tabla, clave, campos}.
 // Así, agregar una acción reversible nueva = guardar su Snap; aquí no se toca nada.
-import { q } from "./db";
+import { q, pool } from "./db";
 import { registrarCambio, type EntidadBitacora } from "./audit";
+
+// Ejecutor de consultas: el módulo `q` (con su pool y reintentos) o el cliente de una
+// transacción abierta. Permite que el motor lea y escriba dentro de la MISMA transacción
+// al deshacer (leer-comparar-aplicar atómico), sin duplicar la lógica.
+type Exec = <T = Record<string, unknown>>(sql: string, params?: unknown[]) => Promise<T[]>;
 
 // ---------- Tipos de foto ----------
 
@@ -151,13 +156,16 @@ const whereDe = (clave: Record<string, unknown>): { sql: string; params: unknown
 };
 
 // Lee el estado ACTUAL con la misma forma que un Snap esperado, para poder compararlos.
-async function leerActual(esperado: Snap): Promise<Snap> {
+// `lock`=true añade FOR UPDATE: bloquea las filas dentro de la transacción para que nadie
+// las cambie entre que comparamos y aplicamos (candado anti-conflicto sin carreras).
+async function leerActual(esperado: Snap, exec: Exec, lock = false): Promise<Snap> {
   const w = whereDe(esperado.clave);
+  const fu = lock ? " for update" : "";
   if (esperado.kind === "row") {
     const cols = esperado.campos ? Object.keys(esperado.campos) : [];
     const sel = cols.length ? cols.map(ident).join(", ") : "1";
-    const rows = await q<Record<string, unknown>>(
-      `select ${sel} from ${ident(esperado.tabla)} where ${w.sql}`, w.params);
+    const rows = await exec<Record<string, unknown>>(
+      `select ${sel} from ${ident(esperado.tabla)} where ${w.sql}${fu}`, w.params);
     const campos = rows.length
       ? (cols.length ? Object.fromEntries(cols.map((k) => [k, rows[0][k]])) : {})
       : null;
@@ -165,8 +173,8 @@ async function leerActual(esperado: Snap): Promise<Snap> {
   }
   // set
   const cols = esperado.filas[0] ? Object.keys(esperado.filas[0]) : ["fuente", "puntaje", "razon"];
-  const filas = await q<Record<string, unknown>>(
-    `select ${cols.map(ident).join(", ")} from ${ident(esperado.tabla)} where ${w.sql}`, w.params);
+  const filas = await exec<Record<string, unknown>>(
+    `select ${cols.map(ident).join(", ")} from ${ident(esperado.tabla)} where ${w.sql}${fu}`, w.params);
   return { kind: "set", tabla: esperado.tabla, clave: esperado.clave, filas };
 }
 
@@ -190,12 +198,13 @@ function coincide(actual: Snap, esperado: Snap): boolean {
   return false;
 }
 
-// Escribe la foto objetivo (el "antes" al deshacer).
-async function aplicar(target: Snap): Promise<void> {
+// Escribe la foto objetivo (el "antes" al deshacer). `exec` permite correrlo dentro
+// de la transacción del deshacer (mismo cliente que el SELECT ... FOR UPDATE).
+async function aplicar(target: Snap, exec: Exec): Promise<void> {
   const w = whereDe(target.clave);
   if (target.kind === "row") {
     if (target.campos === null) {
-      await q(`delete from ${ident(target.tabla)} where ${w.sql}`, w.params);
+      await exec(`delete from ${ident(target.tabla)} where ${w.sql}`, w.params);
       return;
     }
     // UPSERT manual: intenta UPDATE; si no había fila, INSERT (clave + campos).
@@ -204,13 +213,13 @@ async function aplicar(target: Snap): Promise<void> {
     const setParams = cols.map((k) => target.campos![k]);
     const wParams2 = w.params.map((_, i) => `$${cols.length + i + 1}`);
     const wSql2 = Object.keys(target.clave).map((k, i) => `${ident(k)} = ${wParams2[i]}`).join(" and ");
-    const upd = await q<{ ok: number }>(
+    const upd = await exec<{ ok: number }>(
       `update ${ident(target.tabla)} set ${setSql} where ${wSql2} returning 1 as ok`,
       [...setParams, ...w.params]);
     if (upd.length === 0) {
       const all = { ...target.clave, ...target.campos };
       const keys = Object.keys(all);
-      await q(
+      await exec(
         `insert into ${ident(target.tabla)} (${keys.map(ident).join(", ")})
          values (${keys.map((_, i) => `$${i + 1}`).join(", ")})`,
         keys.map((k) => all[k]));
@@ -218,11 +227,11 @@ async function aplicar(target: Snap): Promise<void> {
     return;
   }
   // set: borra el conjunto y reinserta exactamente las filas guardadas.
-  await q(`delete from ${ident(target.tabla)} where ${w.sql}`, w.params);
+  await exec(`delete from ${ident(target.tabla)} where ${w.sql}`, w.params);
   for (const fila of target.filas) {
     const all = { ...target.clave, ...fila };
     const keys = Object.keys(all);
-    await q(
+    await exec(
       `insert into ${ident(target.tabla)} (${keys.map(ident).join(", ")})
        values (${keys.map((_, i) => `$${i + 1}`).join(", ")})`,
       keys.map((k) => all[k]));
@@ -254,18 +263,30 @@ export async function aplicarReversion(id: number): Promise<ResultadoReversion> 
   if (!antes || !despues)
     return { ok: false, error: "Este movimiento es anterior a la función de deshacer (no guardó una foto para revertir)." };
 
-  // Candado anti-conflicto: el estado actual debe seguir siendo el que dejó esta acción.
-  const actual = await leerActual(despues);
-  if (!coincide(actual, despues))
-    return {
-      ok: false,
-      error: "No se pudo deshacer: ese dato ya cambió después de este movimiento. Revisa el estado actual antes de revertir, para no pisar un cambio más reciente.",
-    };
-
+  // Transacción atómica: leer-comparar-aplicar en una sola unidad, con FOR UPDATE para
+  // bloquear las filas afectadas. Sin esto, dos "deshacer" simultáneos (o un deshacer y una
+  // edición a la vez) podían colarse entre la comparación y la escritura y pisarse mutuamente.
+  const client = await pool.connect();
+  const exec: Exec = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+    client.query(sql, params).then((r) => r.rows as T[]);
   try {
-    await aplicar(antes);
+    await client.query("begin");
+    // Candado anti-conflicto: el estado actual (bloqueado) debe seguir siendo el que dejó esta acción.
+    const actual = await leerActual(despues, exec, true);
+    if (!coincide(actual, despues)) {
+      await client.query("rollback");
+      return {
+        ok: false,
+        error: "No se pudo deshacer: ese dato ya cambió después de este movimiento. Revisa el estado actual antes de revertir, para no pisar un cambio más reciente.",
+      };
+    }
+    await aplicar(antes, exec);
+    await client.query("commit");
   } catch (e) {
+    await client.query("rollback").catch(() => {});
     return { ok: false, error: `No se pudo deshacer: ${e instanceof Error ? e.message : "error desconocido"}` };
+  } finally {
+    client.release();
   }
 
   // Deja rastro del deshacer (e invierte las fotos: su "antes" es lo que había, su "después" lo restaurado).

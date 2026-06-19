@@ -10,6 +10,7 @@ import { leerCV } from "@/lib/cv";
 import { nombresCoordinadores } from "@/lib/usuarios-db";
 import { recomputarAlertas } from "@/lib/alertas-core.mjs";
 import { registrarCambio } from "@/lib/audit";
+import { exigirSesionActiva } from "@/lib/session";
 import {
   aplicarReversion,
   snapAsignacion, snapSlotAula, snapSlotHorario, snapSlotApertura, snapAula, snapDocente, snapCandidatura, snapPropuesta,
@@ -36,6 +37,7 @@ async function recalcularAlertas() {
 
 // Botón "Recalcular alertas" del panel: rehace el diagnóstico a mano, sin tocar asignaciones.
 export async function recalcularAlertasManual() {
+  await exigirSesionActiva();
   await recalcularAlertas();
   revalidatePath("/alertas");
   revalidatePath("/");
@@ -64,6 +66,7 @@ export type CrearDocenteState = { error?: string };
 
 // Alta de docente. Camino 'manual' = marca materias ya impartidas (+40). Camino 'cv' = Claude lee el PDF.
 export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Promise<CrearDocenteState> {
+  await exigirSesionActiva();
   const nombre = String(fd.get("nombre") ?? "").trim();
   const licenciatura = String(fd.get("licenciatura") ?? "").trim();
   const aniosRaw = String(fd.get("anios_experiencia") ?? "").trim();
@@ -186,6 +189,7 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
 // La UI ya oculta el botón en estos casos; este candado protege ante pantallas viejas o
 // llamadas directas. Lanza un error claro (en español) si se intenta violar la regla.
 export async function asignar(slotId: number, profesorId: number, puntaje?: number, razon?: string) {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null }>(
     `select modalidad, dia, hora_inicio, hora_fin from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
@@ -245,6 +249,7 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
 // Confirma la sugerencia automática tal cual (la "acepta" coordinación).
 // Solo cambia el estado (sugerida→confirmada), no el docente, así que el diagnóstico no cambia.
 export async function confirmar(slotId: number, profesorId?: number) {
+  await exigirSesionActiva();
   const antes = await snapAsignacion(slotId);   // foto del antes (estado previo)
   // Candado de integridad (no solo UI): no se puede "confirmar" una clase sin docente.
   const upd = await q<{ slot_id: number }>(
@@ -282,13 +287,14 @@ export async function confirmar(slotId: number, profesorId?: number) {
 export async function confirmarSugeridas(
   filtro: { plantel?: string; cuatri?: string; tipo?: string; q?: string } = {},
 ) {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   const conds: string[] = [`s.ciclo_id = ${act.id}`];
   const params: unknown[] = [];
   if (filtro.plantel) { params.push(filtro.plantel); conds.push(`s.plantel = $${params.length}`); }
   if (filtro.cuatri) { params.push(filtro.cuatri); conds.push(`s.cuatrimestre = $${params.length}`); }
   if (filtro.tipo) { params.push(filtro.tipo); conds.push(`s.tipo = $${params.length}`); }
-  if (filtro.q) { params.push(`%${filtro.q}%`); conds.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length})`); }
+  if (filtro.q) { params.push(`%${filtro.q}%`); conds.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   const sub = `select s.id from slots s
                  left join materias m on m.id = s.materia_id
                  left join grupos g on g.id = s.grupo_id
@@ -315,6 +321,7 @@ export async function confirmarSugeridas(
 // Asigna un aula al slot. Si ese salón queda ocupado a esa hora por otra clase,
 // el recálculo levanta la alerta choque_aula (pero el aula se asigna igual: lo decide coordinación).
 export async function asignarAula(slotId: number, aulaId: number) {
+  await exigirSesionActiva();
   const antes = await snapSlotAula(slotId);   // foto del aula previa (para deshacer)
   // aula_manual = true: el motor (asignar.mjs) ya no recalcula ni pisa este salón.
   await q("update slots set aula_id = $1, aula_manual = true where id = $2", [aulaId, slotId]);
@@ -341,6 +348,7 @@ export async function asignarAula(slotId: number, aulaId: number) {
 
 // Quita el aula del slot (lo deja sin salón). El recálculo limpia el choque y, si es presencial, levanta sin_aula.
 export async function quitarAula(slotId: number) {
+  await exigirSesionActiva();
   const [info] = await q<{ materia: string | null; grupo: string | null; aula: string | null }>(
     `select m.nombre materia, g.clave grupo, au.clave aula
        from slots s
@@ -368,6 +376,7 @@ export async function quitarAula(slotId: number) {
 // profesorId es opcional: si viene (p. ej. al quitar desde la ficha del docente),
 // también se refresca esa página para que la clase desaparezca de su lista al instante.
 export async function quitarAsignacion(slotId: number, profesorId?: number) {
+  await exigirSesionActiva();
   const [info] = await q<{ materia: string | null; grupo: string | null; profesor: string | null }>(
     `select m.nombre materia, g.clave grupo, p.nombre profesor
        from slots s
@@ -403,6 +412,7 @@ export async function quitarAsignacion(slotId: number, profesorId?: number) {
 //  - elimina sus alertas. cv_competencias y materia_candidatos caen por cascade.
 // Todo en una transacción: o se hace completo, o no se hace.
 export async function eliminarDocente(profesorId: number) {
+  await exigirSesionActiva();
   let nombreBorrado: string | null = null;
   // Foto COMPLETA del docente y sus datos ligados ANTES de borrar (decisión "foto completa":
   // hoy no se deshace un borrado, pero esto prepara la Fase 3 para poder recrearlo tal cual).
@@ -460,6 +470,7 @@ const parseCapacidad = (raw: string): { ok: true; val: number | null } | { ok: f
 
 // Da de alta un salón nuevo en el catálogo.
 export async function crearAula(_prev: CrearAulaState, fd: FormData): Promise<CrearAulaState> {
+  await exigirSesionActiva();
   const clave = String(fd.get("clave") ?? "").trim();
   const tipo = String(fd.get("tipo") ?? "").trim() || null;
   const cap = parseCapacidad(String(fd.get("capacidad") ?? ""));
@@ -483,6 +494,7 @@ export async function crearAula(_prev: CrearAulaState, fd: FormData): Promise<Cr
 // Edita tipo y capacidad de un salón existente (la clave es su identificador y no se cambia aquí).
 // Capturar la capacidad faltante permite que el acomodo automático vuelva a considerar el salón.
 export async function editarAula(aulaId: number, fd: FormData) {
+  await exigirSesionActiva();
   const tipo = String(fd.get("tipo") ?? "").trim() || null;
   const cap = parseCapacidad(String(fd.get("capacidad") ?? ""));
   const antes = await snapAula(aulaId);   // foto del tipo/cupo previos (para deshacer)
@@ -502,6 +514,7 @@ export async function editarAula(aulaId: number, fd: FormData) {
 
 // Borra un salón SOLO si ninguna clase de septiembre lo usa (si no, no hace nada: protege los datos).
 export async function eliminarAula(aulaId: number) {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   const [u] = await q<{ n: number }>(
     `select count(*)::int n from slots where aula_id=$1 and ciclo_id=${act.id}`, [aulaId]);
@@ -528,6 +541,7 @@ export type EditarDocenteState = { error?: string };
 export async function editarDocente(
   profesorId: number, _prev: EditarDocenteState, fd: FormData,
 ): Promise<EditarDocenteState> {
+  await exigirSesionActiva();
   const nombre = String(fd.get("nombre") ?? "").trim();
   const licenciatura = String(fd.get("licenciatura") ?? "").trim();
   const aniosRaw = String(fd.get("anios_experiencia") ?? "").trim();
@@ -577,6 +591,7 @@ export type PropuestaResult = { ok: true } | { ok: false; error: string };
 // Reenviar reinicia la confirmación (si ya estaba confirmada y se reenvía, vuelve a "enviada":
 // es una propuesta nueva que el docente debe volver a aceptar).
 export async function marcarPropuestaEnviada(profesorId: number): Promise<PropuestaResult> {
+  await exigirSesionActiva();
   const [p] = await q<{ nombre: string; correo: string | null }>(
     "select nombre, correo from profesores where id=$1", [profesorId]);
   if (!p) return { ok: false, error: "No se encontró el docente." };
@@ -602,6 +617,7 @@ export async function marcarPropuestaEnviada(profesorId: number): Promise<Propue
 // "Confirmar propuesta": acto FORZOSO del coordinador. Candado de integridad (no solo UI):
 // solo se puede confirmar una propuesta que ya fue ENVIADA. Nunca es automática.
 export async function confirmarPropuesta(profesorId: number): Promise<PropuestaResult> {
+  await exigirSesionActiva();
   const [p] = await q<{ nombre: string; propuesta_estado: string }>(
     "select nombre, propuesta_estado from profesores where id=$1", [profesorId]);
   if (!p) return { ok: false, error: "No se encontró el docente." };
@@ -628,6 +644,7 @@ export async function confirmarPropuesta(profesorId: number): Promise<PropuestaR
 // Marca que el docente PUEDE dar una materia del catálogo (candidatura manual, +40 como el historial).
 // Una candidatura nueva puede resolver un "sin_candidato", así que recalculamos alertas.
 export async function agregarCandidatura(profesorId: number, fd: FormData) {
+  await exigirSesionActiva();
   const materiaNombre = String(fd.get("materia") ?? "").trim();
   if (!materiaNombre) return;
   const [m] = await q<{ id: number; nombre: string }>("select id, nombre from materias where lower(nombre)=lower($1)", [materiaNombre]);
@@ -656,6 +673,7 @@ export async function agregarCandidatura(profesorId: number, fd: FormData) {
 // Quita una materia de las que el docente puede dar (todas sus fuentes para esa materia).
 // Si era el único candidato de esa materia, puede aparecer un "sin_candidato": recalculamos.
 export async function quitarCandidatura(profesorId: number, materiaId: number) {
+  await exigirSesionActiva();
   const [ctx] = await q<{ profesor: string | null; materia: string | null }>(
     `select (select nombre from profesores where id=$1) profesor,
             (select nombre from materias where id=$2) materia`, [profesorId, materiaId]);
@@ -687,6 +705,7 @@ export type ProcesarCVState = { error?: string; ok?: string };
 //  3. Guarda el perfil crudo en cv_competencias (upsert: una fila por docente, para auditoría).
 // Recalcula alertas al final: nuevas candidaturas pueden resolver un "sin_candidato".
 export async function procesarCVDocente(profesorId: number, _prev: ProcesarCVState, fd: FormData): Promise<ProcesarCVState> {
+  await exigirSesionActiva();
   const [prof] = await q<{ id: number; nombre: string; slug: string }>(
     "select id, nombre, slug from profesores where id=$1", [profesorId]);
   if (!prof) return { error: "No se encontró el docente." };
@@ -772,6 +791,7 @@ const limpiarHora = (h: string) => {
 // Edita día y horario de una materia por grupo. NO re-corre el motor (no reasigna docentes),
 // pero sí recalcula las alertas: cambiar la hora puede crear o resolver choques y traslados.
 export async function editarHorario(slotId: number, fd: FormData) {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   const dia = String(fd.get("dia") ?? "").trim() || null;
   let hi = limpiarHora(String(fd.get("hora_inicio") ?? ""));
@@ -806,6 +826,7 @@ export async function editarHorario(slotId: number, fd: FormData) {
 // el motor deja de asignarla y no genera alertas. NO borra nada: es reversible (Reactivar).
 // A diferencia de eliminarSlot, conserva la asignación por si se reactiva más adelante.
 export async function marcarNoApertura(slotId: number) {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   const antes = await snapSlotApertura(slotId);
   const [info] = await q<{ materia: string | null; grupo: string | null }>(
@@ -830,6 +851,7 @@ export async function marcarNoApertura(slotId: number) {
 
 // Reactiva una clase que estaba como "No se apertura": vuelve a la lista de trabajo y al motor.
 export async function reactivarSlot(slotId: number) {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   const antes = await snapSlotApertura(slotId);
   const [info] = await q<{ materia: string | null; grupo: string | null }>(
@@ -854,6 +876,7 @@ export async function reactivarSlot(slotId: number) {
 
 // Elimina una materia por grupo (ej. "NO SE APERTURA"). Cascada borra su asignación y alertas.
 export async function eliminarSlot(slotId: number) {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   // Recordamos a qué materia/grupo apuntaba ANTES de borrar la clase, para limpiar huérfanos.
   const [ref] = await q<{ materia_id: number | null; grupo_id: number | null; materia: string | null; grupo: string | null; plantel: string | null }>(
@@ -907,6 +930,7 @@ export type CrearSlotState = { error?: string };
 // Crea una materia por grupo nueva en el ciclo activo (el que está seleccionado en el header).
 // La materia y el grupo se reutilizan si ya existen (por nombre/clave); si no, se crean.
 export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<CrearSlotState> {
+  await exigirSesionActiva();
   const act = await cicloActivo();
   const plantel = String(fd.get("plantel") ?? "").trim();
   const materiaNombre = String(fd.get("materia") ?? "").trim();
@@ -969,6 +993,7 @@ export type DeshacerState = { ok?: string; error?: string };
 // BLOQUEA y devuelve un mensaje claro (no se pisa un cambio más reciente).
 // Tras revertir, recalcula alertas (cambió el estado) y refresca las páginas afectadas.
 export async function deshacerCambio(_prev: DeshacerState, fd: FormData): Promise<DeshacerState> {
+  await exigirSesionActiva();
   const id = Number(fd.get("id"));
   if (!Number.isFinite(id)) return { error: "Movimiento no válido." };
 
