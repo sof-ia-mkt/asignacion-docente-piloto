@@ -16,10 +16,10 @@ function cifrar(plano) {
 
 // usuario, nombre, correo, rol, carrera, es_admin
 const USUARIOS = [
-  ["amisadahi.ramirez", "Amisadahi Ramírez", "coordinacion.cyc@cenyca.edu.mx", "academica", null, false],
-  ["daniel.luna",       "Daniel Luna",       "coordinacion.cyc@cenyca.edu.mx", "academica", null, true],
-  ["estefany.garcia",   "Estefany García",   "coordinacion.cyc@cenyca.edu.mx", "academica", null, false],
-  ["fernanda.chavez",   "Fernanda Chávez",   "coordinacion.cyc@cenyca.edu.mx", "academica", null, false],
+  ["amisadahi.ramirez", "Amisadahi Ramírez", "coordinacion.academica.general@cenyca.edu.mx", "academica", null, false],
+  ["daniel.luna",       "Daniel Luna",       "coordinacion.academica.general@cenyca.edu.mx", "academica", null, true],
+  ["estefany.garcia",   "Estefany García",   "coordinacion.academica.general@cenyca.edu.mx", "academica", null, false],
+  ["fernanda.chavez",   "Fernanda Chávez",   "coordinacion.academica.general@cenyca.edu.mx", "academica", null, false],
   ["rigoberto.lozoya",  "Rigoberto Lozoya",  "coordinacion.cyc@cenyca.edu.mx", "carrera", "Criminología, Criminalística y Derecho", false],
   ["luis.alfonso",      "Luis Alfonso",      "coordinacion.ingenierias@cenyca.edu.mx", "carrera", "Ingenierías (todas)", false],
   ["brandon.rodriguez", "Brandon Rodríguez", "coord.gastronomia@cenyca.edu.mx", "carrera", "Gastronomía", false],

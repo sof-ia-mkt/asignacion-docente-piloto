@@ -67,7 +67,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 </Link>
               ))}
             </nav>
-            <div className="ml-auto flex items-center gap-3">
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
               <CicloSelector
                 ciclos={ciclos.map((c) => ({ codigo: c.codigo, nombre: c.nombre, estado: c.estado }))}
                 activo={activo.codigo}

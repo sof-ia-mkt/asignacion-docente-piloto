@@ -21,7 +21,7 @@ export default async function DashboardsHome({
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <p className="text-sm text-slate-500">
           Vista general de <b className="text-slate-700">{act.nombre}</b>. Entra a cada monitor para el detalle.
         </p>

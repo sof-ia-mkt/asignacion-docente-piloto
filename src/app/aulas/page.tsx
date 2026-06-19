@@ -14,7 +14,7 @@ export default async function AulasPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Aulas</h1>
           <p className="text-sm text-slate-500">Catálogo de salones (todos los planteles). Edita tipo y capacidad, o agrega y borra salones.</p>

@@ -91,10 +91,10 @@ export async function getProfesor(id: number) {
        from materia_candidatos mc join materias m on m.id = mc.materia_id
       where mc.profesor_id = $1 order by mc.puntaje desc, m.nombre`, [id]);
   const asignaciones = await q<{
-    slot_id: number; materia: string; grupo: string | null; plantel: string | null; dia: string | null;
+    slot_id: number; id_excel: number | null; materia: string; grupo: string | null; plantel: string | null; dia: string | null;
     hora_inicio: string | null; hora_fin: string | null; tipo: string | null; estado: string; ciclo: string | null;
   }>(
-    `select s.id slot_id, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado, s.ciclo
+    `select s.id slot_id, s.id_excel, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado, s.ciclo
        from asignaciones a join slots s on s.id = a.slot_id
        join materias m on m.id = s.materia_id left join grupos g on g.id = s.grupo_id
       where a.profesor_id = $1 and a.profesor_id is not null and not s.no_apertura order by s.plantel, s.dia, s.hora_inicio`, [id]);
@@ -252,7 +252,7 @@ export async function getConteoPorEstado(f: SlotFiltro) {
   const where: string[] = [`s.ciclo_id = ${act.id}`];
   const params: unknown[] = [];
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
-  if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length})`); }
+  if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
   if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
   // Los conteos de trabajo (total/sin/con/rev) excluyen las clases parqueadas (no_apertura);
@@ -280,7 +280,7 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 25) {
   const where: string[] = [`s.ciclo_id = ${act.id}`];
   const params: unknown[] = [];
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
-  if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length})`); }
+  if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
   if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
   if (f.estado === "asignado") where.push("a.profesor_id is not null and a.estado <> 'sugerida'");
@@ -298,12 +298,12 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 25) {
   params.push(offset);
   const pOffset = params.length;
   const rows = await q<{
-    id: number; plantel: string; materia: string | null; grupo: string | null; dia: string | null;
+    id: number; id_excel: number | null; plantel: string; materia: string | null; grupo: string | null; dia: string | null;
     hora_inicio: string | null; hora_fin: string | null; tipo: string | null;
     plan: string | null; cuatrimestre: string | null; alumnos: number | null; aula: string | null;
     docente: string | null; estado: string | null; puntaje: number | null; razon: string | null;
   }>(
-    `select s.id, s.plantel, m.nombre materia, g.clave grupo, s.dia, s.hora_inicio, s.hora_fin, s.tipo,
+    `select s.id, s.id_excel, s.plantel, m.nombre materia, g.clave grupo, s.dia, s.hora_inicio, s.hora_fin, s.tipo,
             pl.nombre plan, s.cuatrimestre, g.alumnos, au.clave aula,
             p.nombre docente, a.estado, a.puntaje, a.razon
        from slots s
@@ -333,7 +333,7 @@ export async function contarSugeridas(f: SlotFiltro = {}) {
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
   if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
-  if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length})`); }
+  if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   const [r] = await q<{ n: number }>(
     `select count(*)::int n
        from asignaciones a
@@ -552,10 +552,15 @@ export async function getDashCobertura(plantel?: string) {
        from slots s left join asignaciones a on a.slot_id = s.id
       where s.ciclo_id = ${act.id} ${cond} group by s.tipo order by n desc`, p);
   const porTurno = await q<{ turno: string; n: number; asig: number }>(
-    `select coalesce(s.turno,'(sin turno)') turno, count(*)::int n,
+    `select case
+              when s.turno is null or btrim(s.turno) = '' or upper(btrim(s.turno)) = 'N/A' then '(sin turno)'
+              when upper(btrim(s.turno)) in ('MATUTINO','VESPERTINO','GENERAL') then upper(btrim(s.turno))
+              else '(otro)'
+            end turno,
+            count(*)::int n,
             count(*) filter (where a.profesor_id is not null)::int asig
        from slots s left join asignaciones a on a.slot_id = s.id
-      where s.ciclo_id = ${act.id} ${cond} group by s.turno order by n desc`, p);
+      where s.ciclo_id = ${act.id} ${cond} group by 1 order by n desc`, p);
   const porCuatri = await q<{ cuatrimestre: string; n: number; asig: number }>(
     `select coalesce(s.cuatrimestre,'(s/c)') cuatrimestre, count(*)::int n,
             count(*) filter (where a.profesor_id is not null)::int asig

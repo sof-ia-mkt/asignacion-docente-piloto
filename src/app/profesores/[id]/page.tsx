@@ -65,7 +65,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
   const horasSemana = Math.round((minutos / 60) * 10) / 10;
   const ciclo = asignaciones.find((a) => a.ciclo)?.ciclo ?? null;
   const lineasMaterias = asignaciones.map((a) => {
-    const horario = a.dia ? `${a.dia} ${a.hora_inicio ?? ""}-${a.hora_fin ?? ""}`.trim() : "En línea (sin hora fija)";
+    const horario = a.dia ? (a.hora_inicio && a.hora_fin ? `${a.dia} ${a.hora_inicio}-${a.hora_fin}` : a.dia) : "En línea (sin hora fija)";
     const tentativa = a.estado !== "confirmada" ? " (tentativa)" : "";
     return `- ${a.materia}${a.tipo ? ` (${a.tipo})` : ""} · ${a.grupo ?? "s/grupo"} · ${plantelCorto(a.plantel)} · ${horario}${tentativa}`;
   });
@@ -191,6 +191,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
             <table className="w-full text-sm">
               <thead className="text-slate-500 text-left">
                 <tr>
+                  <th className="py-1 font-medium">ID</th>
                   <th className="py-1 font-medium">Materia</th>
                   <th className="py-1 font-medium">Tipo</th>
                   <th className="py-1 font-medium">Grupo</th>
@@ -203,11 +204,12 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
               <tbody className="divide-y divide-slate-100">
                 {asignaciones.map((a, i) => (
                   <tr key={i}>
+                    <td className="py-1.5 pr-2 tabular-nums text-slate-500">{a.id_excel ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-slate-800">{a.materia}</td>
                     <td className="py-1.5 pr-2"><TipoClase t={a.tipo} /></td>
                     <td className="py-1.5 pr-2 text-slate-600">{a.grupo ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-slate-600 whitespace-nowrap">{plantelCorto(a.plantel)}</td>
-                    <td className="py-1.5 pr-2 text-slate-600 whitespace-nowrap">{a.dia ? `${a.dia} ${a.hora_inicio}-${a.hora_fin}` : "—"}</td>
+                    <td className="py-1.5 pr-2 text-slate-600 whitespace-nowrap">{a.dia ? (a.hora_inicio && a.hora_fin ? `${a.dia} ${a.hora_inicio}-${a.hora_fin}` : a.dia) : "—"}</td>
                     <td className="py-1.5"><Estado e={a.estado} /></td>
                     <td className="py-1.5 text-right whitespace-nowrap">
                       <div className="flex justify-end gap-2">

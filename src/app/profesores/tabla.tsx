@@ -86,15 +86,15 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr className="text-left">
-              <th className="px-4 py-2 font-medium">Docente</th>
-              <th className="px-4 py-2 font-medium">Propuesta</th>
-              <th className="px-4 py-2 font-medium">Coordinación</th>
-              <th className="px-4 py-2 font-medium">CV</th>
-              <th className="px-4 py-2 font-medium">Plantel(es)</th>
-              <th className="px-4 py-2 font-medium">Licenciatura</th>
-              <th className="px-4 py-2 font-medium text-right">Exp.</th>
-              <th className="px-4 py-2 font-medium text-right">Materias candidatas</th>
-              <th className="px-4 py-2 font-medium text-right">Asignadas</th>
+              <th className="px-3 py-2 font-medium">Docente</th>
+              <th className="px-3 py-2 font-medium">Propuesta</th>
+              <th className="px-3 py-2 font-medium">Coordinación</th>
+              <th className="px-3 py-2 font-medium">CV</th>
+              <th className="px-3 py-2 font-medium">Plantel(es)</th>
+              <th className="px-3 py-2 font-medium">Licenciatura</th>
+              <th className="px-3 py-2 font-medium text-right">Exp.</th>
+              <th className="px-3 py-2 font-medium text-right">Materias candidatas</th>
+              <th className="px-3 py-2 font-medium text-right">Asignadas</th>
               <th className="px-2 py-2 font-medium text-right sticky right-0 bg-slate-50"></th>
             </tr>
           </thead>
@@ -105,7 +105,7 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
                 onClick={() => router.push(`/profesores/${p.id}`)}
                 className="hover:bg-slate-50 cursor-pointer group"
               >
-                <td className="px-4 py-2">
+                <td className="px-3 py-2">
                   <Link
                     href={`/profesores/${p.id}`}
                     onClick={(e) => e.stopPropagation()}
@@ -114,28 +114,28 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
                     {p.nombre}
                   </Link>
                 </td>
-                <td className="px-4 py-2 whitespace-nowrap">
+                <td className="px-3 py-2 whitespace-nowrap">
                   <PropuestaEstado e={p.propuesta_estado} />
                 </td>
-                <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
                   {p.coordinador ?? <span className="text-amber-700 text-xs">sin asignar</span>}
                 </td>
-                <td className="px-4 py-2">
+                <td className="px-3 py-2">
                   {p.tiene_cv ? (
                     <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-green-100 text-green-800 border-green-200">CV</span>
                   ) : (
                     <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-100 text-slate-500 border-slate-200">historial</span>
                   )}
                 </td>
-                <td className="px-4 py-2 text-slate-600 whitespace-nowrap">
+                <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
                   {p.planteles
                     ? [...new Set(p.planteles.split(",").filter(Boolean).map(plantelCorto))].join(", ")
                     : "—"}
                 </td>
-                <td className="px-4 py-2 text-slate-600">{p.licenciatura ?? "—"}</td>
-                <td className="px-4 py-2 text-right text-slate-600">{p.anios_experiencia ?? "—"}</td>
-                <td className="px-4 py-2 text-right">{p.n_cand}</td>
-                <td className="px-4 py-2 text-right">{p.n_asig}</td>
+                <td className="px-3 py-2 text-slate-600">{p.licenciatura ?? "—"}</td>
+                <td className="px-3 py-2 text-right text-slate-600">{p.anios_experiencia ?? "—"}</td>
+                <td className="px-3 py-2 text-right">{p.n_cand}</td>
+                <td className="px-3 py-2 text-right">{p.n_asig}</td>
                 <td className="px-2 py-2 text-right sticky right-0 bg-white group-hover:bg-slate-50">
                   <Link
                     href={`/profesores/${p.id}/editar`}
@@ -165,7 +165,7 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
           <button
             type="button"
             onClick={() => setVisibles((v) => v + POR_PAGINA)}
-            className="px-4 py-2 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50"
+            className="px-3 py-2 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50"
           >
             Mostrar más ({Math.min(POR_PAGINA, faltan)} de {faltan} restantes)
           </button>

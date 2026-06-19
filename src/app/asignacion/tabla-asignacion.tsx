@@ -11,6 +11,7 @@ import { ConfirmButton } from "@/lib/confirm-button";
 
 export type SlotFila = {
   id: number;
+  id_excel: number | null;
   plantel: string;
   materia: string | null;
   plan: string | null;
@@ -38,6 +39,7 @@ export function TablaAsignacion({ rows, parked = false }: { rows: SlotFila[]; pa
       <table className="min-w-full text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
         <thead className="bg-slate-50 text-slate-600">
           <tr className="text-left">
+            <th className="px-4 py-2 font-medium">ID</th>
             <th className="px-4 py-2 font-medium hidden md:table-cell">Plantel</th>
             <th className="px-4 py-2 font-medium">Materia</th>
             <th className="px-4 py-2 font-medium hidden 2xl:table-cell">Plan</th>
@@ -59,6 +61,7 @@ export function TablaAsignacion({ rows, parked = false }: { rows: SlotFila[]; pa
               onClick={() => router.push(`/asignacion/${s.id}`)}
               className="hover:bg-slate-50 cursor-pointer group"
             >
+              <td className="px-4 py-2 tabular-nums text-slate-500">{s.id_excel ?? <span className="text-slate-300">—</span>}</td>
               <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{plantelCorto(s.plantel)}</td>
               <td className="px-4 py-2 text-slate-800">{s.materia ?? "—"}</td>
               <td className="px-4 py-2 text-slate-600 hidden 2xl:table-cell">{planCorto(s.plan)}</td>
@@ -110,7 +113,7 @@ export function TablaAsignacion({ rows, parked = false }: { rows: SlotFila[]; pa
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={12} className="px-4 py-6 text-center text-sm text-slate-400">
+              <td colSpan={13} className="px-4 py-6 text-center text-sm text-slate-400">
                 Sin resultados con estos filtros.
               </td>
             </tr>

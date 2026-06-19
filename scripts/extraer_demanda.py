@@ -50,7 +50,10 @@ CARRERAS = {
 }
 
 # Clave de grupo: PLAN _ Gnn _ TURNO _ CAMPUS   (turno: MV/SM/DM/ESCM/...)
-CLAVE_RE = re.compile(r"^[A-Z]{2,5}_G\d+_[A-Z0-9]+_[A-Z]{2,3}$")
+# Algunos grupos traen un segmento extra de sección (A/B) o especialidad antes del
+# campus: PLAN_Gnn_TURNO_SECCION_CAMPUS (ej. IND_G22_DM_A_CB, CYC_G9_ESCM_A_CB). Se
+# acepta ese segmento opcional; antes se descartaban silenciosamente.
+CLAVE_RE = re.compile(r"^[A-Z]{2,5}_G\d+_[A-Z0-9]+(?:_[A-Z0-9]+)?_[A-Z]{2,3}$")
 TIPOS_VALIDOS = {"DISCIPLINAR", "MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "VIRTUAL"}
 NA = {"", "N/A", "NA", "N/A.", "GENERAL", "-"}
 
