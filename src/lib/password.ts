@@ -12,6 +12,13 @@ export function cifrarPassword(plano: string): string {
   return `scrypt:${salt.toString("hex")}:${hash.toString("hex")}`;
 }
 
+// Regla mínima para una contraseña nueva. Devuelve el motivo si no pasa, o null si está bien.
+export function validarPasswordNueva(plano: string): string | null {
+  if (plano.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
+  if (!/[a-zA-Z]/.test(plano) || !/[0-9]/.test(plano)) return "La contraseña debe incluir letras y números.";
+  return null;
+}
+
 export function verificarPassword(plano: string, guardado: string): boolean {
   const partes = guardado.split(":");
   if (partes.length !== 3 || partes[0] !== "scrypt") return false;

@@ -32,8 +32,8 @@ await client.connect();
 let nuevos = 0;
 for (const [usuario, nombre, correo, rol, carrera, esAdmin] of USUARIOS) {
   const res = await client.query(
-    `insert into usuarios (usuario, nombre, correo, rol, carrera, es_admin, password_hash)
-     values ($1,$2,$3,$4,$5,$6,$7)
+    `insert into usuarios (usuario, nombre, correo, rol, carrera, es_admin, password_hash, debe_cambiar_password)
+     values ($1,$2,$3,$4,$5,$6,$7,true)
      on conflict (usuario) do nothing
      returning usuario`,
     [usuario, nombre, correo, rol, carrera, esAdmin, cifrar(PASSWORD_TEMP)],

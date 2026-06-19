@@ -9,14 +9,22 @@ import { COOKIE_SESION } from "@/lib/session-cookie";
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Pasa la ruta actual en un header para que el layout pueda saber dónde estamos
+  // (el layout fuerza el cambio de contraseña salvo en /cambiar-password y /login).
+  const conRuta = () => {
+    const h = new Headers(request.headers);
+    h.set("x-pathname", pathname);
+    return NextResponse.next({ request: { headers: h } });
+  };
+
   // /login y los recursos públicos no requieren sesión (si no, no se podría entrar).
   if (pathname === "/login" || pathname.startsWith("/login/")) {
-    return NextResponse.next();
+    return conRuta();
   }
 
   const token = request.cookies.get(COOKIE_SESION)?.value;
   if (await leerToken(token)) {
-    return NextResponse.next();
+    return conRuta();
   }
 
   const url = request.nextUrl.clone();

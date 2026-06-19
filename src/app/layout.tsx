@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import "./globals.css";
 import { getCiclos, cicloActivo } from "@/lib/ciclo";
 import { CicloSelector } from "./ciclo-selector";
@@ -39,6 +41,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     );
   }
 
+  // Cambio de contraseña obligatorio: mientras la bandera esté prendida, toda ruta lleva
+  // a /cambiar-password (salvo esa misma). El pathname llega en un header puesto por proxy.ts.
+  const pathname = (await headers()).get("x-pathname") ?? "";
+  if (usuario.debe_cambiar_password && pathname !== "/cambiar-password") {
+    redirect("/cambiar-password");
+  }
+
   const [ciclos, activo] = await Promise.all([getCiclos(), cicloActivo()]);
   const navItems = usuario.es_admin ? [...nav, { href: "/usuarios", label: "Usuarios" }] : nav;
   return (
@@ -63,9 +72,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                 ciclos={ciclos.map((c) => ({ codigo: c.codigo, nombre: c.nombre, estado: c.estado }))}
                 activo={activo.codigo}
               />
-              <span className="text-xs text-slate-300 whitespace-nowrap" title={usuario.usuario}>
+              <Link href="/cambiar-password"
+                className="text-xs text-slate-300 hover:text-white whitespace-nowrap"
+                title="Cambiar mi contraseña">
                 {usuario.nombre}{usuario.es_admin ? " · admin" : ""}
-              </span>
+              </Link>
               <form action={cerrarSesionAccion}>
                 <button type="submit" className="text-xs text-slate-300 hover:text-white underline whitespace-nowrap">
                   Cerrar sesión
