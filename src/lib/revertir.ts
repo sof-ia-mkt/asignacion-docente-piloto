@@ -143,10 +143,15 @@ const ident = (s: string): string => {
 
 // Igualdad tolerante: null/undefined se tratan igual; el resto se compara como texto
 // (un int vuelve como número, en jsonb como número; coercer a String evita falsos choques).
+// OJO timestamps: pg devuelve timestamptz como Date, pero la foto en jsonb los guarda como
+// texto ISO. String(Date) da el formato largo ("Thu Jun 18 2026 ... GMT-0700"), que NUNCA
+// coincide con el ISO guardado → sin esta normalización, deshacer la propuesta (envió/confirmó,
+// que llevan propuesta_enviada_en/confirmada_en) SIEMPRE se bloqueaba por "ese dato ya cambió".
+const aTexto = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v));
 const mismoValor = (a: unknown, b: unknown): boolean => {
   if (a == null && b == null) return true;
   if (a == null || b == null) return false;
-  return String(a) === String(b);
+  return aTexto(a) === aTexto(b);
 };
 
 const whereDe = (clave: Record<string, unknown>): { sql: string; params: unknown[] } => {
@@ -180,7 +185,7 @@ async function leerActual(esperado: Snap, exec: Exec, lock = false): Promise<Sna
 
 // Firma canónica de una fila (claves ordenadas) para comparar conjuntos sin importar el orden.
 const firma = (fila: Record<string, unknown>): string =>
-  Object.keys(fila).sort().map((k) => `${k}=${fila[k] == null ? "∅" : String(fila[k])}`).join("|");
+  Object.keys(fila).sort().map((k) => `${k}=${fila[k] == null ? "∅" : aTexto(fila[k])}`).join("|");
 
 // ¿El estado actual coincide con la foto esperada? Si no, alguien lo cambió desde entonces.
 function coincide(actual: Snap, esperado: Snap): boolean {
