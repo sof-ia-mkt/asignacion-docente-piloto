@@ -45,8 +45,6 @@ export default async function SlotPage({
     `• Grupo: ${slot.grupo ?? "—"}${slot.plantel ? ` · ${plantelCorto(slot.plantel)}` : ""}\n` +
     `• Horario: ${horarioTxt}\n\n` +
     `Revisa que sea el docente correcto antes de confirmar.`;
-  // Regla dura: nadie en dos clases a la misma hora. Un candidato con choque queda bloqueado.
-  const bloqueado = (choque: string | null) => requiereHorario || !!choque;
 
   // Celda de disponibilidad del docente a la hora de ESTA clase: libre / choca / sin horario.
   const dispCell = (choque: string | null) => {
@@ -79,6 +77,22 @@ export default async function SlotPage({
               Reactivar
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Banner cuando la clase es parte de una COMPACTACIÓN: lo que se asigne/quite aquí afecta a
+          TODOS los grupos compactados (es una sola clase). El docente y horario se manejan en la
+          pantalla de Compactación; aquí solo avisamos para que no se rompa la unidad sin querer. */}
+      {slot.compactacion_id != null && slot.compactacion_grupos > 1 && (
+        <div className="rounded-lg border border-violet-300 bg-violet-50 p-3 flex items-center justify-between gap-3">
+          <p className="text-sm text-violet-900">
+            <span className="font-medium">Esta clase está compactada con {slot.compactacion_grupos - 1} grupo(s) más.</span>{" "}
+            Es una sola clase (un docente, un aula, un horario): lo que asignes o quites aquí afecta a los {slot.compactacion_grupos} grupos.
+            Para gestionarla como conjunto, usa la pantalla de Compactación.
+          </p>
+          <Link href="/compactacion" className="px-3 py-1.5 rounded-md border border-violet-300 bg-violet-100 text-violet-800 text-sm whitespace-nowrap hover:bg-violet-200">
+            Ir a Compactación
+          </Link>
         </div>
       )}
 

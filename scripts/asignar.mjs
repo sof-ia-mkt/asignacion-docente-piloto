@@ -70,13 +70,25 @@ for (const arr of porMateria.values()) arr.sort((a, b) => b.puntaje - a.puntaje)
 // ---- slots de septiembre ----
 const slots = (await db.query(
   `select s.id, s.materia_id, s.grupo_id, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, s.modalidad,
-          s.aula_id, s.aula_manual, m.nombre materia, g.clave grupo, g.alumnos
+          s.aula_id, s.aula_manual, s.compactacion_id, m.nombre materia, g.clave grupo, g.alumnos
      from slots s
      left join materias m on m.id = s.materia_id
      left join grupos g on g.id = s.grupo_id
     where s.ciclo_id = $1 and not s.no_apertura`, [CICLO_ID])).rows
   .map((s) => ({ ...s, ini: toMin(s.hora_inicio), fin: toMin(s.hora_fin) }));
 const slotsById = new Map(slots.map((s) => [s.id, s]));
+
+// CANDADO COMPACTACIÓN: una clase compactada es UNA sola (un docente, un aula, un horario)
+// aunque ligue varios slots de distintos grupos/carreras. El motor decide POR UNIDAD: elige un
+// docente y un salón para todos sus miembros, y cuenta la carga una sola vez. Sin esto, el motor
+// podía dar cada slot a un docente distinto (partir la clase) o ponerla en 3 salones a la vez.
+const unitKey = (s) => (s.compactacion_id ? `c${s.compactacion_id}` : `s${s.id}`);
+const unidades = new Map();   // unitKey -> [slots miembros]
+for (const s of slots) {
+  const k = unitKey(s);
+  if (!unidades.has(k)) unidades.set(k, []);
+  unidades.get(k).push(s);
+}
 
 // ---- ¿en qué plantel(es) dio cada docente cada materia? (de su historial de mayo) ----
 // Sirve para preferir el "fit local": quien ya la dio en ESTE plantel pesa más.
@@ -97,7 +109,6 @@ const tipoRank = (t) => (t === "Teoría" ? 0 : t === "Práctica" ? 1 : 2);
 const aulas = (await db.query(
   "select id, clave, tipo, capacidad from aulas where capacidad is not null")).rows
   .sort((a, b) => tipoRank(a.tipo) - tipoRank(b.tipo) || a.capacidad - b.capacidad);
-const CAP_MAX = aulas.length ? Math.max(...aulas.map((a) => a.capacidad)) : 0;
 
 // procesa primero los slots con mejor candidato (las coincidencias más fuertes reclaman docente antes)
 const mejor = (s) => (porMateria.get(s.materia_id)?.[0]?.puntaje ?? -1);
@@ -120,40 +131,57 @@ let sinCand = 0;
 
 // Siembra horario y carga con las asignaciones manuales para que el motor las respete:
 // nadie se programa encima de un docente ya puesto a mano, y su carga ya cuenta.
+const manualVisto = new Map();   // profesor_id -> Set(unitKey) ya contadas (no inflar clases compactadas)
 for (const r of manualRows) {
   if (!r.profesor_id) continue;
   const s = slotsById.get(r.slot_id);
   if (!s) continue;
+  const uk = unitKey(s);
+  if (!manualVisto.has(r.profesor_id)) manualVisto.set(r.profesor_id, new Set());
+  const visto = manualVisto.get(r.profesor_id);
+  if (visto.has(uk)) continue;   // otra parte de una clase compactada ya sembrada
+  visto.add(uk);
   if (!horario.has(r.profesor_id)) horario.set(r.profesor_id, []);
   horario.get(r.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin });
   carga.set(r.profesor_id, (carga.get(r.profesor_id) || 0) + 1);
   manualAsignados.push({ slot: s, profesor_id: r.profesor_id });
 }
 
+const procesadas = new Set();   // unitKey ya resueltas (una clase compactada se decide una vez)
 for (const s of slots) {
   if (manualSlotIds.has(s.id)) continue;   // decisión humana: no la recalcula el motor
+  const uk = unitKey(s);
+  if (procesadas.has(uk)) continue;        // otra parte de una clase compactada ya resuelta
+  procesadas.add(uk);
+  // Miembros AUTOMÁTICOS de la unidad (si por algún motivo parte está a mano, esa parte se respeta).
+  const miembros = (unidades.get(uk) || [s]).filter((mm) => !manualSlotIds.has(mm.id));
+  if (!miembros.length) continue;
+
   const cands = porMateria.get(s.materia_id) || [];
   if (!cands.length) {
     sinCand++;
-    asignados.push({ slot: s, profesor_id: null });
+    for (const mm of miembros) asignados.push({ slot: mm, profesor_id: null });
     continue;
   }
 
-  // Puntaje efectivo PARA ESTE SLOT: +20 si el candidato ya dio la materia en este plantel.
+  // Puntaje efectivo PARA ESTA CLASE: +20 si el candidato ya dio la materia en este plantel.
   // Así, entre dos que la dieron, gana el local; el de otro plantel sigue siendo válido (queda abajo).
   const score = (c) => c.puntaje + (dioEnPlantel(c.profesor_id, s.materia_id, s.plantel) ? PLANTEL_BONUS : 0);
   // Puntaje final = ajuste por plantel − penalización por carga acumulada (reparto).
   const efectivo = (c) => score(c) - penalCarga(carga.get(c.profesor_id) || 0);
 
   // Restricción dura: el candidato debe estar LIBRE a esa hora (nadie en 2 lugares a la vez).
-  const libres = cands.filter((c) => !(horario.get(c.profesor_id) || []).some((h) => overlap(h, s)));
+  // Para una clase compactada basta el horario de la unidad (los miembros comparten día/hora),
+  // pero comparamos contra todos los miembros por robustez.
+  const libres = cands.filter((c) =>
+    !miembros.some((mm) => (horario.get(c.profesor_id) || []).some((h) => overlap(h, mm))));
   // De los libres, el de mayor puntaje efectivo (mejor fit ya descontada su carga).
   const elegido = libres.reduce((mejor, c) => (mejor == null || efectivo(c) > efectivo(mejor) ? c : mejor), null);
 
   if (!elegido) {
     // Todos los candidatos fuertes ya están ocupados a esa hora -> queda sin maestro.
     // El diagnóstico (la alerta de choque) lo levanta el módulo compartido al final.
-    asignados.push({ slot: s, profesor_id: null });
+    for (const mm of miembros) asignados.push({ slot: mm, profesor_id: null });
     continue;
   }
 
@@ -163,11 +191,15 @@ for (const s of slots) {
   const notaPlantel = local
     ? ` · Mismo plantel (${s.plantel}).`
     : (otros.length ? ` · Otro plantel: la dio en ${otros.join(", ")}.` : "");
+  const notaComp = miembros.length > 1 ? ` · Clase compactada (${miembros.length} grupos).` : "";
 
+  // Carga y horario se cuentan UNA sola vez por clase (no por miembro).
   if (!horario.has(elegido.profesor_id)) horario.set(elegido.profesor_id, []);
   horario.get(elegido.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin });
   carga.set(elegido.profesor_id, (carga.get(elegido.profesor_id) || 0) + 1);
-  asignados.push({ slot: s, profesor_id: elegido.profesor_id, puntaje: score(elegido), razon: (elegido.razon ?? "") + notaPlantel });
+  // ...pero el docente elegido se escribe en TODOS los slots miembros (la clase no se parte).
+  for (const mm of miembros)
+    asignados.push({ slot: mm, profesor_id: elegido.profesor_id, puntaje: score(elegido), razon: (elegido.razon ?? "") + notaPlantel + notaComp });
 }
 
 // inserta asignaciones
@@ -198,18 +230,31 @@ for (const s of slots) {
   }
 }
 
-const presenciales = slots
-  .filter((s) => (s.modalidad || "").toUpperCase() === "PRESENCIAL" && !s.aula_manual)
-  .sort((a, b) => (b.alumnos ?? 0) - (a.alumnos ?? 0));   // grupos grandes reclaman aula primero
+// Una clase compactada ocupa UN solo salón para todos sus grupos: agrupamos por unidad y el
+// aforo requerido es la SUMA de alumnos de los miembros (todos caben en la misma aula a la vez).
+const presUnidades = new Map();   // unitKey -> [slots miembros presenciales]
+for (const s of slots) {
+  if ((s.modalidad || "").toUpperCase() !== "PRESENCIAL" || s.aula_manual) continue;
+  const k = unitKey(s);
+  if (!presUnidades.has(k)) presUnidades.set(k, []);
+  presUnidades.get(k).push(s);
+}
+const aforoUnidad = (miembros) => {
+  const alums = miembros.map((m) => m.alumnos).filter((x) => x != null);
+  return alums.length ? alums.reduce((a, b) => a + b, 0) : null;   // null = aforo desconocido
+};
+const presenciales = [...presUnidades.values()]
+  .sort((a, b) => (aforoUnidad(b) ?? 0) - (aforoUnidad(a) ?? 0));   // clases grandes reclaman aula primero
 
-for (const s of presenciales) {
-  const al = s.alumnos ?? null;
+for (const miembros of presenciales) {
+  const s = miembros[0];   // todos comparten día/hora (horario de la clase)
+  const al = aforoUnidad(miembros);
   const caben = aulas.filter((a) => al == null || a.capacidad >= al);
   const libre = caben.find((a) => !(aulaOcc.get(a.id) || []).some((o) => overlap(o, s)));
   if (libre) {
     if (!aulaOcc.has(libre.id)) aulaOcc.set(libre.id, []);
     aulaOcc.get(libre.id).push({ dia: s.dia, ini: s.ini, fin: s.fin });
-    aulaDe.set(s.id, libre.id);
+    for (const mm of miembros) aulaDe.set(mm.id, libre.id);   // mismo salón para toda la clase
   } else {
     sinAula++;   // solo para el resumen; la alerta sin_aula la levanta el módulo compartido
   }

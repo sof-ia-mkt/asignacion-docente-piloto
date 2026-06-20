@@ -16,6 +16,7 @@ export type EntidadBitacora =
   | "aula"
   | "asignacion"
   | "candidatura"
+  | "compactacion"   // Fase 2: juntar/separar grupos en una sola clase
   | "cv";
 
 // Verbo de la acción, en lenguaje de coordinación.

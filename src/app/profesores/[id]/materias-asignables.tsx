@@ -67,7 +67,7 @@ export function MateriasAsignables({
     );
   };
 
-  const grupo = (c: MateriaReco) => (g: GrupoAbierto) => {
+  const grupo = (c: MateriaReco, g: GrupoAbierto) => {
     const asignarBind = asignar.bind(null, g.slot_id, profesorId, c.puntaje, c.razon);
     return (
       <div key={g.slot_id}
@@ -161,7 +161,7 @@ export function MateriasAsignables({
             <button type="button" onClick={() => setAbierta(null)}
               className="text-xs text-slate-500 hover:text-slate-700">Cerrar ✕</button>
           </div>
-          <div className="divide-y divide-blue-100">{sel.grupos.map(grupo(sel))}</div>
+          <div className="divide-y divide-blue-100">{sel.grupos.map((g) => grupo(sel, g))}</div>
           <p className="px-3 py-2 text-[11px] text-slate-400">
             Al asignar queda como decisión de coordinación (Asignada). Las clases en
             <span className="text-red-700"> rojo</span> chocan con otra que ya tiene a esa hora.

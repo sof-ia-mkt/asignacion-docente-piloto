@@ -13,7 +13,7 @@ import { registrarCambio } from "@/lib/audit";
 import { exigirSesionActiva } from "@/lib/session";
 import {
   aplicarReversion,
-  snapAsignacion, snapSlotAula, snapSlotHorario, snapSlotApertura, snapAula, snapDocente, snapCandidatura, snapPropuesta,
+  snapAsignacion, snapAsignacionMulti, snapSlotAula, snapSlotHorario, snapSlotApertura, snapAula, snapDocente, snapCandidatura, snapPropuesta,
 } from "@/lib/revertir";
 
 // Recalcula las alertas desde el ESTADO ACTUAL (diagnóstico; NO reasigna docentes ni aulas).
@@ -191,13 +191,19 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
 export async function asignar(slotId: number, profesorId: number, puntaje?: number, razon?: string) {
   await exigirSesionActiva();
   const act = await cicloActivo();
-  const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null }>(
-    `select modalidad, dia, hora_inicio, hora_fin from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
+  const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null; compactacion_id: number | null }>(
+    `select modalidad, dia, hora_inicio, hora_fin, compactacion_id from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
   if (!s) throw new Error("La clase no existe o no es del cuatrimestre a asignar.");
   const asincronica = (s.modalidad ?? "").toUpperCase().includes("ASINCR");
   const sinHorario = !s.dia || !s.hora_inicio || !s.hora_fin;
   if (sinHorario && !asincronica)
     throw new Error("Esta clase presencial aún no tiene horario. Captura el día y la hora antes de asignar un docente (así se evita empalmar al maestro).");
+  // Si la clase está COMPACTADA, el docente cubre TODOS sus grupos (es una sola clase):
+  // asignamos a todos los slots miembros y el choque ignora a los hermanos (no chocan entre sí).
+  const objetivos = s.compactacion_id
+    ? (await q<{ id: number }>(`select id from slots where compactacion_id=$1 and ciclo_id=${act.id}`, [s.compactacion_id])).map((r) => r.id)
+    : [slotId];
+  if (!objetivos.includes(slotId)) objetivos.push(slotId);
   if (!sinHorario) {
     const [choque] = await q<{ mat: string }>(
       `select coalesce(m2.nombre, 'otra clase') || coalesce(' · ' || g2.clave, '') mat
@@ -205,24 +211,24 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
          join slots s2 on s2.id = a2.slot_id
          left join materias m2 on m2.id = s2.materia_id
          left join grupos g2 on g2.id = s2.grupo_id
-        where a2.profesor_id = $1 and s2.ciclo_id = ${act.id} and s2.id <> $2
+        where a2.profesor_id = $1 and s2.ciclo_id = ${act.id} and s2.id <> all($2)
           and s2.dia = $3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
         order by s2.hora_inicio limit 1`,
-      [profesorId, slotId, s.dia, s.hora_inicio, s.hora_fin]);
+      [profesorId, objetivos, s.dia, s.hora_inicio, s.hora_fin]);
     if (choque)
       throw new Error(`Ese docente ya da "${choque.mat}" a esa misma hora. No se puede empalmar: primero libéralo de esa clase o cambia el horario de alguna de las dos.`);
   }
-  const antes = await snapAsignacion(slotId);   // foto del antes (para deshacer)
+  const antes = await snapAsignacionMulti(objetivos);   // foto del antes (todos los grupos de la clase)
   await q(
     `insert into asignaciones (slot_id, profesor_id, estado, puntaje, razon, automatica)
-     values ($1,$2,'confirmada',$3,$4,false)
+     select unnest($1::int[]), $2, 'confirmada', $3, $4, false
      on conflict (slot_id) do update
        set profesor_id = excluded.profesor_id,
            estado = 'confirmada',
            puntaje = excluded.puntaje,
            razon = excluded.razon,
            automatica = false`,
-    [slotId, profesorId, puntaje ?? null, razon ?? null]);
+    [objetivos, profesorId, puntaje ?? null, razon ?? null]);
   const [info] = await q<{ materia: string | null; grupo: string | null; profesor: string | null }>(
     `select m.nombre materia, g.clave grupo, p.nombre profesor
        from slots s
@@ -236,7 +242,7 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
     accion: "asignó",
     descripcion: `Asignó a "${info?.profesor ?? "docente"}" en "${info?.materia ?? "clase"}"${info?.grupo ? ` · ${info.grupo}` : ""}`,
     antes,
-    despues: await snapAsignacion(slotId),
+    despues: await snapAsignacionMulti(objetivos),
   });
   await recalcularAlertas();   // poner a un docente puede resolver un choque/sin_candidato o crear sobrecarga
   revalidatePath(`/asignacion/${slotId}`);
@@ -385,18 +391,25 @@ export async function quitarAsignacion(slotId: number, profesorId?: number) {
        left join asignaciones a on a.slot_id = s.id
        left join profesores p on p.id = a.profesor_id
       where s.id = $1`, [slotId]);
-  const antes = await snapAsignacion(slotId);   // foto del docente previo (para deshacer)
+  // Si la clase está compactada, quitar al docente lo libera de TODOS sus grupos (es una sola clase).
+  const act = await cicloActivo();
+  const [sc] = await q<{ compactacion_id: number | null }>(
+    `select compactacion_id from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
+  const objetivos = sc?.compactacion_id
+    ? (await q<{ id: number }>(`select id from slots where compactacion_id=$1 and ciclo_id=${act.id}`, [sc.compactacion_id])).map((r) => r.id)
+    : [slotId];
+  const antes = await snapAsignacionMulti(objetivos);   // foto del docente previo de TODOS los grupos (para deshacer)
   // Borramos la fila para que la clase vuelva a estar libre y el motor pueda
   // proponer otro docente en la próxima corrida. (Antes la dejábamos como
   // 'rechazada'/automatica=false, lo que bloqueaba el slot para siempre.)
-  await q("delete from asignaciones where slot_id=$1", [slotId]);
+  await q("delete from asignaciones where slot_id = any($1)", [objetivos]);
   await registrarCambio({
     entidad: "asignacion",
     entidadId: slotId,
     accion: "quitó",
     descripcion: `Quitó a "${info?.profesor ?? "docente"}" de "${info?.materia ?? "clase"}"${info?.grupo ? ` · ${info.grupo}` : ""}`,
     antes,
-    despues: await snapAsignacion(slotId),
+    despues: await snapAsignacionMulti(objetivos),
   });
   await recalcularAlertas();   // la clase queda sin docente: puede aparecer choque/sin_candidato, o bajar una sobrecarga
   revalidatePath(`/asignacion/${slotId}`);
@@ -1010,4 +1023,432 @@ export async function deshacerCambio(_prev: DeshacerState, fd: FormData): Promis
   revalidatePath("/profesores");
   revalidatePath("/");
   return { ok: `Se deshizo: ${res.descripcion}` };
+}
+
+// ---------- Compactación de grupos (Fase 2: juntar / separar) ----------
+// Compactar = ligar varios grupos de la MISMA materia y plantel en UNA sola clase
+// (un docente, un aula, un horario). NO borra nada: crea un contenedor `compactaciones`
+// y apunta los slots a él (slots.compactacion_id). Es 100% reversible con "separar".
+// Todo el diagnóstico (choques, carga, repetido, aula) ya trata esos slots como UNA clase.
+
+export type CompactarResult =
+  | { ok: true; id: number }
+  | { ok: false; error: string; needsConfirm?: "materia" };
+
+export async function compactar(
+  slotIds: number[],
+  opts: {
+    razon?: string;
+    horario?: { dia: string; hora_inicio: string; hora_fin: string } | null;
+    docenteId?: number | null;
+    confirmarMateriaDistinta?: boolean;
+  } = {},
+): Promise<CompactarResult> {
+  await exigirSesionActiva();
+  const act = await cicloActivo();
+
+  const ids = [...new Set((slotIds ?? []).filter((n) => Number.isFinite(n)))];
+  if (ids.length < 2) return { ok: false, error: "Selecciona al menos 2 grupos para compactar en una sola clase." };
+
+  // Trae los slots elegidos (solo del ciclo activo). Validamos TODO antes de escribir.
+  const filas = await q<{
+    id: number; materia_id: number | null; materia: string | null; plantel: string | null;
+    dia: string | null; hora_inicio: string | null; hora_fin: string | null;
+    compactacion_id: number | null; no_apertura: boolean; grupo: string | null; tipo: string | null;
+  }>(
+    `select s.id, s.materia_id, m.nombre materia, s.plantel, s.dia, s.hora_inicio, s.hora_fin,
+            s.compactacion_id, s.no_apertura, g.clave grupo, s.tipo
+       from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id
+      where s.id = any($1) and s.ciclo_id = ${act.id}`, [ids]);
+
+  if (filas.length !== ids.length)
+    return { ok: false, error: "Algún grupo seleccionado no existe en el cuatrimestre actual. Recarga la pantalla." };
+  if (filas.some((f) => f.no_apertura))
+    return { ok: false, error: "Hay un grupo marcado como “no se apertura”. Reactívalo o quítalo de la selección antes de compactar." };
+  if (filas.some((f) => f.compactacion_id != null))
+    return { ok: false, error: "Uno de los grupos ya está compactado. Sepáralo primero si quieres rehacer la compactación." };
+
+  // CANDADO: misma sede (la compactación es DENTRO de un plantel; no se juntan sedes distintas).
+  const planteles = [...new Set(filas.map((f) => f.plantel ?? ""))];
+  if (planteles.length > 1)
+    return { ok: false, error: "Solo se pueden compactar grupos del MISMO plantel (no se juntan clases de sedes distintas)." };
+
+  // CANDADO: mismo tipo de slot (no se junta una clase DISCIPLINAR con un MÓDULO o VIRTUAL:
+  // son piezas distintas del grupo, no la misma clase repetida).
+  const tipos = [...new Set(filas.map((f) => (f.tipo ?? "").trim().toUpperCase()))];
+  if (tipos.length > 1)
+    return { ok: false, error: "Los grupos seleccionados son de distinto tipo de clase (Disciplinar / Módulo / Virtual). Solo se compacta la MISMA clase repetida en varios grupos." };
+
+  // CANDADO: misma materia. Si difiere (típico por nombres sucios duplicados), pedimos confirmación.
+  const materias = [...new Set(filas.map((f) => f.materia_id))];
+  if (materias.length > 1 && !opts.confirmarMateriaDistinta)
+    return {
+      ok: false, needsConfirm: "materia",
+      error: `Los grupos seleccionados tienen materias con distinto nombre (${[...new Set(filas.map((f) => f.materia))].filter(Boolean).join(" / ")}). ¿Seguro que es la misma clase? Confirma para compactar de todos modos.`,
+    };
+  const materiaId = filas[0].materia_id;
+  const plantel = filas[0].plantel;
+
+  // Resolver el horario COMPARTIDO: una clase = un horario.
+  //  - Si todos ya coinciden, no se mueve nada.
+  //  - Si difieren, el coordinador DEBE elegir uno (opts.horario) y se aplica a todos.
+  const firmas = [...new Set(filas.map((f) => `${f.dia}|${f.hora_inicio}|${f.hora_fin}`))];
+  let horarioAplicar: { dia: string; hi: string; hf: string } | null = null;
+  if (opts.horario) {
+    const dia = opts.horario.dia?.trim();
+    const hi = limpiarHora(opts.horario.hora_inicio ?? "");
+    const hf = limpiarHora(opts.horario.hora_fin ?? "");
+    if (!dia || !hi || !hf)
+      return { ok: false, error: "El horario elegido no es válido (día y hora inicio–fin en formato HH:MM)." };
+    horarioAplicar = { dia, hi, hf };
+  } else if (firmas.length > 1) {
+    return { ok: false, error: "Los grupos están en horarios distintos. Elige a qué día y hora quedará la clase compactada." };
+  }
+
+  // Choque del docente (si se asigna desde aquí): no debe encimar con OTRAS clases suyas a esa hora.
+  const docenteId = opts.docenteId ?? null;
+  const efDia = horarioAplicar?.dia ?? filas[0].dia;
+  const efHi = horarioAplicar?.hi ?? filas[0].hora_inicio;
+  const efHf = horarioAplicar?.hf ?? filas[0].hora_fin;
+  if (docenteId && efDia && efHi && efHf) {
+    const [choque] = await q<{ mat: string }>(
+      `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
+         from asignaciones a2 join slots s2 on s2.id=a2.slot_id
+         left join materias m2 on m2.id=s2.materia_id
+         left join grupos g2 on g2.id=s2.grupo_id
+        where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+          and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+        order by s2.hora_inicio limit 1`,
+      [docenteId, ids, efDia, efHi, efHf]);
+    if (choque) return { ok: false, error: `El docente elegido ya da "${choque.mat}" a esa hora: no se puede asignar a la clase compactada sin empalmarlo.` };
+  }
+
+  // Escritura atómica: contenedor + ligar slots + (opcional) homogeneizar horario y asignar docente.
+  let nuevoId: number;
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const { rows: [comp] } = await client.query<{ id: number }>(
+      `insert into compactaciones (ciclo_id, materia_id, plantel, razon) values ($1,$2,$3,$4) returning id`,
+      [act.id, materiaId, plantel, opts.razon?.trim() || null]);
+    nuevoId = comp.id;
+    if (horarioAplicar)
+      await client.query(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id = any($4)`,
+        [horarioAplicar.dia, horarioAplicar.hi, horarioAplicar.hf, ids]);
+    // TOCTOU: solo liga los slots que SIGUEN libres. Si alguno se compactó entremedias,
+    // rowCount < ids.length y abortamos (rollback) en vez de robar slots de otra clase.
+    const ligado = await client.query(
+      `update slots set compactacion_id=$1 where id = any($2) and compactacion_id is null`, [nuevoId, ids]);
+    if (ligado.rowCount !== ids.length)
+      throw new Error("Uno de los grupos fue compactado por otra operación. Recarga e inténtalo de nuevo.");
+    if (docenteId)
+      await client.query(
+        `insert into asignaciones (slot_id, profesor_id, estado, puntaje, razon, automatica)
+         select unnest($1::int[]), $2, 'confirmada', null, $3, false
+         on conflict (slot_id) do update
+           set profesor_id=excluded.profesor_id, estado='confirmada', puntaje=excluded.puntaje, razon=excluded.razon, automatica=false`,
+        [ids, docenteId, opts.razon?.trim() || "Asignado en compactación"]);
+    await recomputarAlertas((sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows), act.id);
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    return { ok: false, error: `No se pudo compactar: ${e instanceof Error ? e.message : "error desconocido"}` };
+  } finally {
+    client.release();
+  }
+
+  const grupos = filas.map((f) => f.grupo).filter(Boolean).join(", ");
+  await registrarCambio({
+    entidad: "compactacion",
+    entidadId: nuevoId,
+    accion: "creó",
+    descripcion: `Compactó ${ids.length} grupos en una sola clase de "${filas[0].materia ?? "materia"}"${plantel ? ` (${plantel})` : ""}: ${grupos}${opts.razon?.trim() ? ` — ${opts.razon.trim()}` : ""}`,
+    despues: { id: nuevoId, slotIds: ids, materiaId, plantel, razon: opts.razon?.trim() || null, docenteId },
+  });
+
+  revalidatePath("/compactacion");
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/historial");
+  revalidatePath("/");
+  return { ok: true, id: nuevoId };
+}
+
+// Separar = deshacer la compactación: los grupos vuelven a ser clases independientes.
+// Solo DESLIGA (slots.compactacion_id = null) y borra el contenedor; el horario y el docente
+// que tengan se conservan (cada grupo queda autónomo, como antes de juntarlos).
+export async function separar(compactacionId: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  await exigirSesionActiva();
+  const act = await cicloActivo();
+  const [c] = await q<{ id: number; materia: string | null; plantel: string | null }>(
+    `select c.id, m.nombre materia, c.plantel from compactaciones c left join materias m on m.id=c.materia_id where c.id=$1`, [compactacionId]);
+  if (!c) return { ok: false, error: "Esa compactación ya no existe (quizá ya se separó)." };
+  const miembros = await q<{ id: number; grupo: string | null }>(
+    `select s.id, g.clave grupo from slots s left join grupos g on g.id=s.grupo_id where s.compactacion_id=$1`, [compactacionId]);
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`update slots set compactacion_id=null where compactacion_id=$1`, [compactacionId]);
+    await client.query(`delete from compactaciones where id=$1`, [compactacionId]);
+    await recomputarAlertas((sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows), act.id);
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    return { ok: false, error: `No se pudo separar: ${e instanceof Error ? e.message : "error desconocido"}` };
+  } finally {
+    client.release();
+  }
+
+  await registrarCambio({
+    entidad: "compactacion",
+    entidadId: compactacionId,
+    accion: "borró",
+    descripcion: `Separó la clase compactada de "${c.materia ?? "materia"}"${c.plantel ? ` (${c.plantel})` : ""}: ${miembros.map((m) => m.grupo).filter(Boolean).join(", ")} vuelven a ser grupos independientes`,
+    antes: { id: compactacionId, slotIds: miembros.map((m) => m.id) },
+  });
+
+  revalidatePath("/compactacion");
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/historial");
+  revalidatePath("/");
+  return { ok: true };
+}
+
+// Marca (o desmarca) un grupo como "reducido": pista MANUAL del coordinador, independiente del
+// número de alumnos (que muchas veces no se captura). No condiciona nada; solo informa en la pantalla.
+export async function marcarChico(grupoId: number, valor: boolean) {
+  await exigirSesionActiva();
+  const [g] = await q<{ clave: string; es_chico: boolean }>("select clave, es_chico from grupos where id=$1", [grupoId]);
+  if (!g) return;
+  if (g.es_chico === valor) return;   // sin cambio real
+  await q("update grupos set es_chico=$1 where id=$2", [valor, grupoId]);
+  await registrarCambio({
+    entidad: "clase",
+    entidadId: grupoId,
+    accion: "editó",
+    descripcion: `${valor ? "Marcó" : "Quitó la marca de"} “grupo reducido” en ${g.clave}`,
+    antes: { es_chico: g.es_chico },
+    despues: { es_chico: valor },
+  });
+  revalidatePath("/compactacion");
+}
+
+// Edita la razón (comentario) de una compactación ya creada. Queda en el historial.
+export async function editarRazonCompactacion(
+  compactacionId: number, razon: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await exigirSesionActiva();
+  const [c] = await q<{ id: number; razon: string | null; materia: string | null }>(
+    `select c.id, c.razon, m.nombre materia from compactaciones c left join materias m on m.id=c.materia_id where c.id=$1`,
+    [compactacionId]);
+  if (!c) return { ok: false, error: "Esa compactación ya no existe (quizá se separó)." };
+  const nueva = razon.trim() || null;
+  if ((c.razon ?? null) === nueva) return { ok: true };   // sin cambio real
+  await q(`update compactaciones set razon=$1 where id=$2`, [nueva, compactacionId]);
+  await registrarCambio({
+    entidad: "compactacion",
+    entidadId: compactacionId,
+    accion: "editó",
+    descripcion: `Editó la razón de la clase compactada de "${c.materia ?? "materia"}"${nueva ? `: ${nueva}` : " (la dejó sin razón)"}`,
+    antes: { razon: c.razon },
+    despues: { razon: nueva },
+  });
+  revalidatePath("/compactacion");
+  revalidatePath("/historial");
+  return { ok: true };
+}
+
+// Agrega más grupos a una compactación EXISTENTE: los liga al mismo contenedor y adopta el
+// horario (y el docente, si la clase tiene uno solo) de la clase. Mismo plantel y materia que la clase
+// (salvo confirmación). 100% reversible con "separar" (que desliga a todos).
+export async function agregarACompactacion(
+  compactacionId: number,
+  slotIds: number[],
+  opts: { confirmarMateriaDistinta?: boolean } = {},
+): Promise<CompactarResult> {
+  await exigirSesionActiva();
+  const act = await cicloActivo();
+
+  const ids = [...new Set((slotIds ?? []).filter((n) => Number.isFinite(n)))];
+  if (ids.length < 1) return { ok: false, error: "Selecciona al menos un grupo para agregar a la clase." };
+
+  const [cont] = await q<{ id: number; materia_id: number | null; plantel: string | null }>(
+    `select id, materia_id, plantel from compactaciones where id=$1 and ciclo_id=${act.id}`, [compactacionId]);
+  if (!cont) return { ok: false, error: "Esa compactación ya no existe (quizá se separó). Recarga la pantalla." };
+
+  // Horario y docente representativos de la clase (de sus miembros actuales).
+  const miembros = await q<{ id: number; dia: string | null; hora_inicio: string | null; hora_fin: string | null; profesor_id: number | null; tipo: string | null }>(
+    `select s.id, s.dia, s.hora_inicio, s.hora_fin, a.profesor_id, s.tipo
+       from slots s left join asignaciones a on a.slot_id = s.id
+      where s.compactacion_id=$1 and s.ciclo_id=${act.id}`, [compactacionId]);
+  if (miembros.length === 0) return { ok: false, error: "La clase compactada no tiene grupos. Recarga la pantalla." };
+  const base = miembros[0];
+  const profes = [...new Set(miembros.map((m) => m.profesor_id).filter((x): x is number => x != null))];
+  const docenteClase = profes.length === 1 ? profes[0] : null;
+  const tipoClase = (base.tipo ?? "").trim().toUpperCase();
+
+  // Los grupos nuevos a ligar. Validamos TODO antes de escribir.
+  const filas = await q<{
+    id: number; materia_id: number | null; materia: string | null; plantel: string | null;
+    compactacion_id: number | null; no_apertura: boolean; grupo: string | null; tipo: string | null;
+  }>(
+    `select s.id, s.materia_id, m.nombre materia, s.plantel, s.compactacion_id, s.no_apertura, g.clave grupo, s.tipo
+       from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id
+      where s.id = any($1) and s.ciclo_id = ${act.id}`, [ids]);
+
+  if (filas.length !== ids.length)
+    return { ok: false, error: "Algún grupo seleccionado ya no existe en el cuatrimestre actual. Recarga la pantalla." };
+  if (filas.some((f) => f.no_apertura))
+    return { ok: false, error: "Hay un grupo marcado como “no se apertura”. Reactívalo o quítalo de la selección." };
+  if (filas.some((f) => f.compactacion_id != null))
+    return { ok: false, error: "Uno de los grupos ya está compactado (en esta u otra clase). Sepáralo primero." };
+  if (filas.some((f) => (f.plantel ?? "") !== (cont.plantel ?? "")))
+    return { ok: false, error: "Solo se pueden agregar grupos del MISMO plantel de la clase compactada." };
+  if (tipoClase && filas.some((f) => (f.tipo ?? "").trim().toUpperCase() !== tipoClase))
+    return { ok: false, error: "El grupo es de distinto tipo de clase (Disciplinar / Módulo / Virtual) que la clase compactada. Solo se agrega la MISMA clase." };
+  if (filas.some((f) => f.materia_id !== cont.materia_id) && !opts.confirmarMateriaDistinta)
+    return {
+      ok: false, needsConfirm: "materia",
+      error: `Algún grupo tiene una materia con distinto nombre (${[...new Set(filas.map((f) => f.materia))].filter(Boolean).join(" / ")}). Confirma que es la misma clase para agregarlo de todos modos.`,
+    };
+
+  // Choque del docente de la clase contra OTRAS clases suyas a esa hora (excluye la propia clase y los nuevos).
+  const efDia = base.dia, efHi = base.hora_inicio, efHf = base.hora_fin;
+  if (docenteClase && efDia && efHi && efHf) {
+    const excluir = [...new Set([...ids, ...miembros.map((m) => m.id)])];
+    const [choque] = await q<{ mat: string }>(
+      `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
+         from asignaciones a2 join slots s2 on s2.id=a2.slot_id
+         left join materias m2 on m2.id=s2.materia_id
+         left join grupos g2 on g2.id=s2.grupo_id
+        where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+          and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+        order by s2.hora_inicio limit 1`,
+      [docenteClase, excluir, efDia, efHi, efHf]);
+    if (choque) return { ok: false, error: `El docente de la clase ya da "${choque.mat}" a esa hora: no se puede agregar este grupo sin empalmarlo.` };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    // El grupo nuevo adopta el horario de la clase (una clase = un horario).
+    await client.query(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id = any($4)`,
+      [efDia, efHi, efHf, ids]);
+    // TOCTOU: solo liga los que SIGUEN libres; si alguno se compactó entremedias, abortamos.
+    const ligado = await client.query(
+      `update slots set compactacion_id=$1 where id = any($2) and compactacion_id is null`, [compactacionId, ids]);
+    if (ligado.rowCount !== ids.length)
+      throw new Error("Uno de los grupos fue compactado por otra operación. Recarga e inténtalo de nuevo.");
+    if (docenteClase)
+      await client.query(
+        `insert into asignaciones (slot_id, profesor_id, estado, puntaje, razon, automatica)
+         select unnest($1::int[]), $2, 'confirmada', null, 'Agregado a clase compactada', false
+         on conflict (slot_id) do update
+           set profesor_id=excluded.profesor_id, estado='confirmada', puntaje=excluded.puntaje, razon=excluded.razon, automatica=false`,
+        [ids, docenteClase]);
+    await recomputarAlertas((sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows), act.id);
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    return { ok: false, error: `No se pudo agregar: ${e instanceof Error ? e.message : "error desconocido"}` };
+  } finally {
+    client.release();
+  }
+
+  const grupos = filas.map((f) => f.grupo).filter(Boolean).join(", ");
+  await registrarCambio({
+    entidad: "compactacion",
+    entidadId: compactacionId,
+    accion: "editó",
+    descripcion: `Agregó ${ids.length} grupo(s) a la clase compactada de "${filas[0].materia ?? "materia"}"${cont.plantel ? ` (${cont.plantel})` : ""}: ${grupos}`,
+    despues: { id: compactacionId, slotIdsAgregados: ids },
+  });
+
+  revalidatePath("/compactacion");
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/historial");
+  revalidatePath("/");
+  return { ok: true, id: compactacionId };
+}
+
+// Unifica el horario de una clase compactada: aplica un mismo día+hora a TODOS sus grupos.
+// Solo hace falta cuando alguien dejó la clase con horarios distintos (editando un grupo aparte
+// en Asignación). Es reversible: cada grupo conserva su autonomía si luego se "separa".
+export async function homogeneizarHorarioCompactacion(
+  compactacionId: number,
+  horario: { dia: string; hora_inicio: string; hora_fin: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await exigirSesionActiva();
+  const act = await cicloActivo();
+
+  const [c] = await q<{ id: number; materia: string | null; plantel: string | null }>(
+    `select c.id, m.nombre materia, c.plantel from compactaciones c left join materias m on m.id=c.materia_id where c.id=$1 and c.ciclo_id=${act.id}`,
+    [compactacionId]);
+  if (!c) return { ok: false, error: "Esa compactación ya no existe (quizá se separó)." };
+
+  const dia = horario.dia?.trim();
+  const hi = limpiarHora(horario.hora_inicio ?? "");
+  const hf = limpiarHora(horario.hora_fin ?? "");
+  if (!dia || !hi || !hf) return { ok: false, error: "El horario elegido no es válido (día y hora inicio–fin en formato HH:MM)." };
+
+  const miembros = await q<{ id: number; profesor_id: number | null }>(
+    `select s.id, a.profesor_id from slots s left join asignaciones a on a.slot_id=s.id where s.compactacion_id=$1 and s.ciclo_id=${act.id}`,
+    [compactacionId]);
+  if (miembros.length === 0) return { ok: false, error: "La clase compactada no tiene grupos. Recarga la pantalla." };
+  const ids = miembros.map((m) => m.id);
+
+  // Choque de cada docente de la clase contra OTRAS clases suyas (fuera de esta compactación) a ese horario.
+  const profes = [...new Set(miembros.map((m) => m.profesor_id).filter((x): x is number => x != null))];
+  for (const prof of profes) {
+    const [choque] = await q<{ mat: string }>(
+      `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
+         from asignaciones a2 join slots s2 on s2.id=a2.slot_id
+         left join materias m2 on m2.id=s2.materia_id
+         left join grupos g2 on g2.id=s2.grupo_id
+        where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+          and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+        order by s2.hora_inicio limit 1`,
+      [prof, ids, dia, hi, hf]);
+    if (choque) return { ok: false, error: `Un docente de la clase ya da "${choque.mat}" a esa hora: elige otro horario para no empalmarlo.` };
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    await client.query(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where compactacion_id=$4 and ciclo_id=${act.id}`,
+      [dia, hi, hf, compactacionId]);
+    await recomputarAlertas((sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows), act.id);
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    return { ok: false, error: `No se pudo unificar el horario: ${e instanceof Error ? e.message : "error desconocido"}` };
+  } finally {
+    client.release();
+  }
+
+  await registrarCambio({
+    entidad: "compactacion",
+    entidadId: compactacionId,
+    accion: "editó",
+    descripcion: `Unificó el horario de la clase compactada de "${c.materia ?? "materia"}"${c.plantel ? ` (${c.plantel})` : ""} a ${dia} ${hi}–${hf}`,
+    despues: { id: compactacionId, dia, hora_inicio: hi, hora_fin: hf },
+  });
+
+  revalidatePath("/compactacion");
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/historial");
+  revalidatePath("/");
+  return { ok: true };
 }

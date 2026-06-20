@@ -55,7 +55,6 @@ const LIMPIAR_CATALOGO = [
 ];
 
 const mergeAliasSlugs = new Set(MERGES.map(([a]) => slugify(a)));
-const mergeCanon = new Map(MERGES.map(([a, can]) => [slugify(a), can]));
 
 const rev = JSON.parse(readFileSync(REVISAR, "utf8"));
 

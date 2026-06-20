@@ -3,7 +3,7 @@
 // La lista completa llega como prop desde el server component (son pocas decenas de
 // docentes, ya vienen cargados), así que el filtrado es en el cliente: se escribe y
 // la tabla se reduce al instante, sin recargar la página.
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { plantelCorto, PropuestaEstado } from "@/lib/ui";
@@ -44,8 +44,13 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
   }, [busca, profes]);
 
   // Al cambiar la búsqueda, volvemos a empezar desde los primeros 25 (si no, se quedaría
-  // mostrando "más" de una lista que ya se redujo).
-  useEffect(() => { setVisibles(POR_PAGINA); }, [busca]);
+  // mostrando "más" de una lista que ya se redujo). Ajuste en render (patrón recomendado
+  // por React) en vez de un efecto.
+  const [prevBusca, setPrevBusca] = useState(busca);
+  if (busca !== prevBusca) {
+    setPrevBusca(busca);
+    setVisibles(POR_PAGINA);
+  }
 
   // Solo pintamos los primeros `visibles` de la lista ya filtrada: evita el scroll sin fin.
   const mostrados = filtrados.slice(0, visibles);

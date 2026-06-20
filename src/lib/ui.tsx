@@ -69,7 +69,6 @@ const PROP: Record<string, string> = {
 const PROP_LABEL: Record<string, string> = {
   borrador: "Borrador", enviada: "Propuesta enviada", confirmada: "Confirmada",
 };
-export const propuestaLabel = (e: string | null | undefined) => PROP_LABEL[e ?? "borrador"] ?? "Borrador";
 
 export function PropuestaEstado({ e }: { e: string | null | undefined }) {
   const k = e ?? "borrador";

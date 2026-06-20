@@ -37,7 +37,17 @@ export type SnapSet = {
   filas: Array<Record<string, unknown>>;
 };
 
-export type Snap = SnapRow | SnapSet;
+// Varias filas, cada una con SU PROPIA clave (a diferencia de SnapSet, que comparte una sola
+// clave/where). Sirve para acciones que tocan N filas distintas a la vez —p. ej. asignar/quitar
+// docente en una clase COMPACTADA, que escribe la misma asignación en todos sus slots miembros—
+// y que al deshacer deben restaurarse TODAS juntas o el conjunto queda inconsistente (la clase
+// se "parte"). Al aplicar/comparar se procesa snap por snap.
+export type SnapMulti = {
+  kind: "multi";
+  snaps: SnapRow[];
+};
+
+export type Snap = SnapRow | SnapSet | SnapMulti;
 
 // ---------- Lectores de foto (usados al escribir Y para comparar al deshacer) ----------
 
@@ -48,6 +58,16 @@ export async function snapAsignacion(slotId: number): Promise<SnapRow> {
     kind: "row", tabla: "asignaciones", clave: { slot_id: slotId },
     campos: r ? { profesor_id: r.profesor_id, estado: r.estado, puntaje: r.puntaje, razon: r.razon, automatica: r.automatica } : null,
   };
+}
+
+// Foto de la asignación de UNA clase, abarcando todos los slots dados. Si es un solo slot
+// devuelve el SnapRow de siempre (compatibilidad); si son varios (clase compactada) devuelve
+// un SnapMulti para que deshacer restaure el conjunto completo, no solo el slot disparador.
+export async function snapAsignacionMulti(slotIds: number[]): Promise<Snap> {
+  const ids = [...new Set(slotIds)];
+  if (ids.length <= 1) return snapAsignacion(ids[0]);
+  const snaps = await Promise.all(ids.map((id) => snapAsignacion(id)));
+  return { kind: "multi", snaps };
 }
 
 export async function snapSlotAula(slotId: number): Promise<SnapRow> {
@@ -164,6 +184,10 @@ const whereDe = (clave: Record<string, unknown>): { sql: string; params: unknown
 // `lock`=true añade FOR UPDATE: bloquea las filas dentro de la transacción para que nadie
 // las cambie entre que comparamos y aplicamos (candado anti-conflicto sin carreras).
 async function leerActual(esperado: Snap, exec: Exec, lock = false): Promise<Snap> {
+  if (esperado.kind === "multi") {
+    const snaps = await Promise.all(esperado.snaps.map((s) => leerActual(s, exec, lock) as Promise<SnapRow>));
+    return { kind: "multi", snaps };
+  }
   const w = whereDe(esperado.clave);
   const fu = lock ? " for update" : "";
   if (esperado.kind === "row") {
@@ -190,6 +214,14 @@ const firma = (fila: Record<string, unknown>): string =>
 // ¿El estado actual coincide con la foto esperada? Si no, alguien lo cambió desde entonces.
 function coincide(actual: Snap, esperado: Snap): boolean {
   if (actual.kind !== esperado.kind) return false;
+  if (esperado.kind === "multi" && actual.kind === "multi") {
+    if (actual.snaps.length !== esperado.snaps.length) return false;
+    // Empareja por clave (el orden puede diferir) y compara cada fila.
+    return esperado.snaps.every((esp) => {
+      const act = actual.snaps.find((a) => firma(a.clave) === firma(esp.clave));
+      return act ? coincide(act, esp) : false;
+    });
+  }
   if (esperado.kind === "row" && actual.kind === "row") {
     if ((actual.campos === null) !== (esperado.campos === null)) return false;
     if (actual.campos === null || esperado.campos === null) return true;
@@ -206,6 +238,10 @@ function coincide(actual: Snap, esperado: Snap): boolean {
 // Escribe la foto objetivo (el "antes" al deshacer). `exec` permite correrlo dentro
 // de la transacción del deshacer (mismo cliente que el SELECT ... FOR UPDATE).
 async function aplicar(target: Snap, exec: Exec): Promise<void> {
+  if (target.kind === "multi") {
+    for (const s of target.snaps) await aplicar(s, exec);
+    return;
+  }
   const w = whereDe(target.clave);
   if (target.kind === "row") {
     if (target.campos === null) {
@@ -249,6 +285,7 @@ function comoSnap(v: unknown): Snap | null {
   const o = v as Record<string, unknown>;
   if (o.kind === "row" && typeof o.tabla === "string" && o.clave && typeof o.clave === "object") return o as unknown as SnapRow;
   if (o.kind === "set" && typeof o.tabla === "string" && Array.isArray(o.filas)) return o as unknown as SnapSet;
+  if (o.kind === "multi" && Array.isArray(o.snaps) && o.snaps.every((s) => comoSnap(s)?.kind === "row")) return o as unknown as SnapMulti;
   return null;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { plantelCorto, tipoLabel } from "@/lib/ui";
 
@@ -24,7 +24,12 @@ export function AsignacionFiltros({
   const router = useRouter();
   const [q, setQ] = useState(qstr);
   // Si el buscador se limpia desde una pastilla (cambia qstr), sincroniza el input.
-  useEffect(() => { setQ(qstr); }, [qstr]);
+  // Se ajusta en render (patrón recomendado por React) en vez de en un efecto.
+  const [prevQstr, setPrevQstr] = useState(qstr);
+  if (qstr !== prevQstr) {
+    setPrevQstr(qstr);
+    setQ(qstr);
+  }
 
   // Arma la URL con los filtros actuales + los cambios pedidos. Omite 'page' a
   // propósito: cualquier cambio de filtro debe regresar a la primera página.

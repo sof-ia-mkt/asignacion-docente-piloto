@@ -77,7 +77,7 @@ try {
   const sinMateria = new Map();
   const vistos = new Set();             // dedup por docente+materia
   for (const d of docentes) {
-    matchDe.get(d.slug) ? existentes++ : nuevos++;
+    if (matchDe.get(d.slug)) existentes++; else nuevos++;
     for (const [carrera, info] of Object.entries(d.carreras || {})) {
       for (const m of (info.materias || [])) {
         const mid = resolverMateria(m);

@@ -72,7 +72,7 @@ async function reporteAsignacion(p: URLSearchParams): Promise<Report> {
     tables: [
       {
         name: "Asignación",
-        headers: ["Plantel", "Materia", "Plan", "Cuatri", "Tipo", "Grupo", "Alumnos", "Aula", "Horario", "Docente", "Estado"],
+        headers: ["Plantel", "Materia", "Plan", "Cuatri", "Tipo", "Grupo", "Alumnos", "Aula", "Horario", "Docente", "Estado", "Compactada"],
         rows: rows.map((s) => [
           plantelCorto(s.plantel),
           s.materia ?? "",
@@ -85,6 +85,8 @@ async function reporteAsignacion(p: URLSearchParams): Promise<Report> {
           horario(s.dia, s.hora_inicio, s.hora_fin),
           s.docente ?? "",
           estadoLabel(s.estado),
+          // Marca la clase compactada (varios grupos = una sola clase): el id agrupa a sus miembros.
+          s.compactacion_id != null ? `Sí (#${s.compactacion_id})` : "",
         ]),
       },
     ],
@@ -425,8 +427,6 @@ const REPORTES: Record<string, (p: URLSearchParams) => Promise<Report>> = {
   dashboard: reporteDashboard,
   historial: reporteBitacora,
 };
-
-export const REPORTES_VALIDOS = Object.keys(REPORTES);
 
 /** Devuelve el reporte para una pantalla, o null si el tipo no existe. */
 export async function getReport(tipo: string, params: URLSearchParams): Promise<Report | null> {

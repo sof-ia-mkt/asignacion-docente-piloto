@@ -25,6 +25,7 @@ const nav = [
   { href: "/profesores", label: "Profesores" },
   { href: "/aulas", label: "Aulas" },
   { href: "/asignacion", label: "Asignación" },
+  { href: "/compactacion", label: "Compactación" },
   { href: "/alertas", label: "Alertas" },
   { href: "/historial", label: "Historial" },
 ];

@@ -35,9 +35,12 @@ export async function calcularAlertas(query, cicloId) {
   }
   for (const arr of porMateria.values()) arr.sort((a, b) => b.puntaje - a.puntaje);
 
-  // slots de septiembre con el docente asignado actual (si lo hay)
+  // slots de septiembre con el docente asignado actual (si lo hay).
+  // Traemos s.compactacion_id: los slots que comparten ese id son UNA sola clase
+  // (un docente, un aula, un horario), aunque sean de carreras/grupos distintos.
   const rows = await query(
     `select s.id, s.materia_id, s.grupo_id, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.modalidad, s.aula_id,
+            s.compactacion_id,
             m.nombre materia, g.clave grupo, g.alumnos, a.profesor_id
        from slots s
        left join materias m on m.id = s.materia_id
@@ -46,11 +49,23 @@ export async function calcularAlertas(query, cicloId) {
       where s.ciclo_id = $1 and not s.no_apertura`, [cicloId]);
   const slots = rows.map((s) => ({ ...s, ini: toMin(s.hora_inicio), fin: toMin(s.hora_fin) }));
 
-  // horario y carga por profesor, a partir de las asignaciones actuales
+  // CANDADO COMPACTACIÓN: una clase compactada cuenta UNA sola vez en TODO el diagnóstico
+  // (carga, choque, repetido, aula). Identidad de "unidad": la compactación si existe, si no el slot.
+  const unitKey = (s) => (s.compactacion_id ? `c${s.compactacion_id}` : `s${s.id}`);
+
+  // horario y carga por profesor, a partir de las asignaciones actuales.
+  // Colapsamos los slots compactados a una sola entrada por profesor: así no se ven como
+  // dos clases encimadas (no son choque consigo mismas) ni inflan la carga.
   const horario = new Map();   // profesor_id -> [{slot_id, dia, ini, fin, materia, plantel, grupo_id}]
   const carga = new Map();
+  const vistoUnidad = new Map();   // profesor_id -> Set(unitKey) ya contadas
   for (const s of slots) {
     if (!s.profesor_id) continue;
+    const uk = unitKey(s);
+    if (!vistoUnidad.has(s.profesor_id)) vistoUnidad.set(s.profesor_id, new Set());
+    const visto = vistoUnidad.get(s.profesor_id);
+    if (visto.has(uk)) continue;   // esta clase compactada ya se contó para este docente
+    visto.add(uk);
     if (!horario.has(s.profesor_id)) horario.set(s.profesor_id, []);
     horario.get(s.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin, materia: s.materia, plantel: s.plantel, grupo_id: s.grupo_id });
     carga.set(s.profesor_id, (carga.get(s.profesor_id) || 0) + 1);
@@ -58,9 +73,14 @@ export async function calcularAlertas(query, cicloId) {
 
   const alertas = [];
 
-  // 1) Clases SIN docente: nadie puede darla (sin_candidato) o todos sus candidatos chocan (choque)
+  // 1) Clases SIN docente: nadie puede darla (sin_candidato) o todos sus candidatos chocan (choque).
+  // Una clase compactada se reporta una sola vez (sus slots miembros son la misma clase).
+  const vistoSinDocente = new Set();   // unitKey ya reportadas
   for (const s of slots) {
     if (s.profesor_id) continue;
+    const uk = unitKey(s);
+    if (vistoSinDocente.has(uk)) continue;
+    vistoSinDocente.add(uk);
     const cands = porMateria.get(s.materia_id) || [];
     if (!cands.length) {
       alertas.push({
@@ -114,7 +134,8 @@ export async function calcularAlertas(query, cicloId) {
     if (!s.profesor_id) continue;
     const k = `${s.profesor_id}|${s.materia_id}`;
     if (!porProfMat.has(k)) porProfMat.set(k, { prof: s.profesor_id, materia: s.materia, grupos: new Set(), slot: s.id });
-    porProfMat.get(k).grupos.add(s.grupo_id);
+    // Si los grupos están compactados, son UNA clase: cuentan como un solo "grupo".
+    porProfMat.get(k).grupos.add(s.compactacion_id ? `c${s.compactacion_id}` : `g${s.grupo_id}`);
   }
   for (const v of porProfMat.values()) {
     if (v.grupos.size >= REPETIDO_GRUPOS) alertas.push({
@@ -124,10 +145,19 @@ export async function calcularAlertas(query, cicloId) {
   }
 
   // 4) Traslado entre planteles el mismo día
+  // CANDADO COMPACTACIÓN: una clase compactada es UNA sola (un docente, un aula, un horario, un
+  // plantel) aunque tenga varios slots miembros; la contamos una vez por unidad para no inventar
+  // un "traslado consigo misma".
   const porProfDia = new Map();
+  const vistoTraslado = new Map();   // `${profesor_id}|${dia}` -> Set(unitKey) ya contadas
   for (const s of slots) {
     if (!s.profesor_id || !s.dia) continue;
     const k = `${s.profesor_id}|${s.dia}`;
+    const uk = unitKey(s);
+    if (!vistoTraslado.has(k)) vistoTraslado.set(k, new Set());
+    const visto = vistoTraslado.get(k);
+    if (visto.has(uk)) continue;   // esta clase compactada ya se contó este día
+    visto.add(uk);
     if (!porProfDia.has(k)) porProfDia.set(k, []);
     porProfDia.get(k).push({ plantel: s.plantel, ini: s.ini, fin: s.fin, slot_id: s.id });
   }
@@ -156,8 +186,12 @@ export async function calcularAlertas(query, cicloId) {
   const claveAula = new Map(aulas.map((a) => [a.id, a.clave]));
   const conCupo = aulas.filter((a) => a.capacidad != null);
   const CAP_MAX = conCupo.length ? Math.max(...conCupo.map((a) => a.capacidad)) : 0;
+  const vistoSinAula = new Set();   // unitKey ya reportadas (una clase compactada = un aviso)
   for (const s of slots) {
     if ((s.modalidad || "").toUpperCase() !== "PRESENCIAL" || s.aula_id) continue;
+    const uk = unitKey(s);
+    if (vistoSinAula.has(uk)) continue;
+    vistoSinAula.add(uk);
     const al = s.alumnos ?? null;
     const hayCupo = al == null || CAP_MAX >= al;
     alertas.push({
@@ -171,8 +205,13 @@ export async function calcularAlertas(query, cicloId) {
   // 6) Choque de aula: dos clases en el MISMO salón a horas que se enciman.
   // El motor evita esto al auto-acomodar; sólo aparece tras asignar un aula a mano.
   const porAula = new Map();   // aula_id -> [slot]
+  const vistoAula = new Map(); // aula_id -> Set(unitKey): clases compactadas comparten aula a propósito
   for (const s of slots) {
     if (!s.aula_id) continue;
+    const uk = unitKey(s);
+    if (!vistoAula.has(s.aula_id)) vistoAula.set(s.aula_id, new Set());
+    if (vistoAula.get(s.aula_id).has(uk)) continue;   // mismo aula y misma clase compactada: no es choque
+    vistoAula.get(s.aula_id).add(uk);
     if (!porAula.has(s.aula_id)) porAula.set(s.aula_id, []);
     porAula.get(s.aula_id).push(s);
   }

@@ -2,7 +2,7 @@
 // Tabla de alertas con "mostrar de a poco": evita el scroll infinito cuando hay
 // muchas alertas (p. ej. 94 de severidad alta). La lista completa llega como prop
 // desde el server component; aquí solo se controla cuántas filas se pintan.
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { Sev, tipoLabel, plantelCorto } from "@/lib/ui";
 
@@ -18,8 +18,13 @@ const POR_PAGINA = 25;
 export function TablaAlertas({ alertas }: { alertas: AlertaFila[] }) {
   const [visibles, setVisibles] = useState(POR_PAGINA);
 
-  // Si cambian los filtros (llega otra lista), reiniciamos al primer bloque.
-  useEffect(() => { setVisibles(POR_PAGINA); }, [alertas]);
+  // Si cambian los filtros (llega otra lista), reiniciamos al primer bloque. Se ajusta
+  // durante el render (patrón recomendado por React) en vez de en un efecto.
+  const [prevAlertas, setPrevAlertas] = useState(alertas);
+  if (alertas !== prevAlertas) {
+    setPrevAlertas(alertas);
+    setVisibles(POR_PAGINA);
+  }
 
   const mostrados = alertas.slice(0, visibles);
   const faltan = alertas.length - mostrados.length;

@@ -58,10 +58,20 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
     const [hh, mm] = h.split(":").map(Number);
     return Number.isFinite(hh) && Number.isFinite(mm) ? hh * 60 + mm : null;
   };
-  const minutos = asignaciones.reduce((acc, a) => {
+  // CANDADO COMPACTACIÓN: una clase compactada (varios grupos, un docente/aula/horario) cuenta
+  // como UNA sola para horas/semana y para el total de materias. Los renglones sí se listan todos.
+  const uniKey = (a: { compactacion_id: number | null; slot_id: number }) =>
+    a.compactacion_id ? `c${a.compactacion_id}` : `s${a.slot_id}`;
+  const vistas = new Set<string>();
+  let minutos = 0;
+  for (const a of asignaciones) {
+    const k = uniKey(a);
+    if (vistas.has(k)) continue;
+    vistas.add(k);
     const i = aMin(a.hora_inicio), f = aMin(a.hora_fin);
-    return acc + (i != null && f != null && f > i ? f - i : 0);
-  }, 0);
+    if (i != null && f != null && f > i) minutos += f - i;
+  }
+  const nClasesUnicas = vistas.size;
   const horasSemana = Math.round((minutos / 60) * 10) / 10;
   const ciclo = asignaciones.find((a) => a.ciclo)?.ciclo ?? null;
   const lineasMaterias = asignaciones.map((a) => {
@@ -77,7 +87,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
     "",
     ...lineasMaterias,
     "",
-    `Total: ${asignaciones.length} materia(s) · ${horasSemana} horas/semana.`,
+    `Total: ${nClasesUnicas} materia(s) · ${horasSemana} horas/semana.`,
     "",
     "Le pedimos confirmar de recibido y su conformidad respondiendo a este correo. Quedamos atentos a cualquier comentario o ajuste.",
     "",
@@ -174,7 +184,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       {/* Números rápidos */}
       <div className="grid grid-cols-3 gap-2">
         {stat(historial.length, "Clases que dio antes", "text-slate-700")}
-        {stat(asignaciones.length, `Asignadas en ${act.nombre}`, "text-green-700")}
+        {stat(nClasesUnicas, `Asignadas en ${act.nombre}`, "text-green-700")}
         {stat(candidatas.length, "Materias que puede dar", "text-blue-700")}
       </div>
 
@@ -207,7 +217,12 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
                     <td className="py-1.5 pr-2 tabular-nums text-slate-500">{a.id_excel ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-slate-800">{a.materia}</td>
                     <td className="py-1.5 pr-2"><TipoClase t={a.tipo} /></td>
-                    <td className="py-1.5 pr-2 text-slate-600">{a.grupo ?? "—"}</td>
+                    <td className="py-1.5 pr-2 text-slate-600">
+                      {a.grupo ?? "—"}
+                      {a.compactacion_id != null && (
+                        <span className="ml-1 rounded bg-violet-100 px-1 py-0.5 text-[10px] font-medium text-violet-700 align-middle" title="Esta clase está compactada con otros grupos: cuenta como una sola para horas y total.">compactada</span>
+                      )}
+                    </td>
                     <td className="py-1.5 pr-2 text-slate-600 whitespace-nowrap">{plantelCorto(a.plantel)}</td>
                     <td className="py-1.5 pr-2 text-slate-600 whitespace-nowrap">{a.dia ? (a.hora_inicio && a.hora_fin ? `${a.dia} ${a.hora_inicio}-${a.hora_fin}` : a.dia) : "—"}</td>
                     <td className="py-1.5"><Estado e={a.estado} /></td>
