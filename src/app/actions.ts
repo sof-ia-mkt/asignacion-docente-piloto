@@ -1239,6 +1239,46 @@ export async function marcarChico(grupoId: number, valor: boolean) {
   revalidatePath("/compactacion");
 }
 
+// Captura/edita el número de alumnos de un grupo desde Compactación. OJO: el dato vive en
+// la tabla `grupos`, así que afecta a TODOS los slots del grupo y a las pantallas que lo usan
+// (recomendación de aula, alerta "ningún salón alcanza", motor de asignación, dashboard de aulas).
+// Es reversible por naturaleza: siempre se puede volver a editar. `valor` null = lo deja en blanco.
+export async function editarAlumnosGrupo(
+  grupoId: number, valor: number | null,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  await exigirSesionActiva();
+  let nuevo: number | null = valor;
+  if (nuevo != null) {
+    if (!Number.isFinite(nuevo) || !Number.isInteger(nuevo) || nuevo < 0)
+      return { ok: false, error: "El número de alumnos debe ser un entero de 0 o más." };
+    if (nuevo > 1000)
+      return { ok: false, error: "Ese número de alumnos parece demasiado alto (máx. 1000)." };
+  }
+  const [g] = await q<{ clave: string; alumnos: number | null }>(
+    "select clave, alumnos from grupos where id=$1", [grupoId]);
+  if (!g) return { ok: false, error: "Ese grupo ya no existe." };
+  if ((g.alumnos ?? null) === nuevo) return { ok: true };   // sin cambio real
+  await q("update grupos set alumnos=$1 where id=$2", [nuevo, grupoId]);
+  await registrarCambio({
+    entidad: "clase",
+    entidadId: grupoId,
+    accion: "editó",
+    descripcion: nuevo == null
+      ? `Quitó el número de alumnos de ${g.clave}`
+      : `Capturó ${nuevo} alumno(s) en ${g.clave}`,
+    antes: { alumnos: g.alumnos },
+    despues: { alumnos: nuevo },
+  });
+  // Afecta varias pantallas, no solo Compactación.
+  revalidatePath("/compactacion");
+  revalidatePath("/aulas");
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/historial");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 // Edita la razón (comentario) de una compactación ya creada. Queda en el historial.
 export async function editarRazonCompactacion(
   compactacionId: number, razon: string,

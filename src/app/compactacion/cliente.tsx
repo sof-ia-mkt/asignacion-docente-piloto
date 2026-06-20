@@ -11,7 +11,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { plantelCorto } from "@/lib/ui";
-import { compactar, separar, marcarChico, editarRazonCompactacion, agregarACompactacion, homogeneizarHorarioCompactacion } from "@/app/actions";
+import { compactar, separar, marcarChico, editarRazonCompactacion, agregarACompactacion, homogeneizarHorarioCompactacion, editarAlumnosGrupo } from "@/app/actions";
 import type { CompactCandidato, CompactGrupo, CompactacionActiva, DocenteCandidato } from "@/lib/queries";
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -80,6 +80,10 @@ export function CompactacionCliente({
   const firmasSel = [...new Set(seleccionados.map((s) => firma(s)).filter(Boolean))];
   const turnosSel = [...new Set(seleccionados.map((s) => turnoDe(s.grupo)).filter(Boolean))];
   const sinHorario = seleccionados.some((s) => !firma(s));
+  // Aforo de la selección: suma de alumnos de los grupos que SÍ traen el dato capturado.
+  const conAlumnos = seleccionados.filter((s) => s.alumnos != null);
+  const totalAlumnos = conAlumnos.reduce((a, s) => a + (s.alumnos ?? 0), 0);
+  const sinCapturar = seleccionados.length - conAlumnos.length;
   const materiaIdSel = materiasSel.length === 1 ? materiasSel[0] : null;
   const docentes = materiaIdSel != null ? (docentesPorMateria[materiaIdSel] ?? []) : [];
 
@@ -230,8 +234,9 @@ export function CompactacionCliente({
         <b>¿Qué es esto?</b> Cuando un grupo reducido lleva la misma materia que otra carrera, en vez de abrir
         dos clases casi vacías (dos docentes, dos aulas) se juntan en una sola. Los grupos en{" "}
         <span className="text-emerald-700 font-medium">verde</span> ya están a la misma hora: se compactan sin
-        mover nada. Si están en horarios distintos, eliges a qué hora queda la clase. El número de alumnos es
-        solo una pista; usa <b>“grupo reducido”</b> para marcarlos tú.
+        mover nada. Si están en horarios distintos, eliges a qué hora queda la clase. Puedes <b>capturar el
+        número de alumnos</b> de cada grupo en su pastilla (sirve para el aforo del aula y las alertas);
+        usa <b>“grupo reducido”</b> para marcarlos tú.
       </div>
 
       {/* ---------- Buscador + filtros ---------- */}
@@ -415,6 +420,12 @@ export function CompactacionCliente({
             {!panelAbierto ? (
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm text-slate-700"><b>{sel.size}</b> grupo(s) seleccionado(s)</span>
+                {conAlumnos.length > 0 && (
+                  <span className="text-xs text-slate-500">
+                    · {sinCapturar > 0 ? "~" : ""}<b className="text-slate-700">{totalAlumnos}</b> alumno(s) en total
+                    {sinCapturar > 0 && <span className="text-amber-600"> (faltan {sinCapturar} por capturar)</span>}
+                  </span>
+                )}
                 {planteles.length > 1 && <span className="text-xs text-red-600">⚠ Son de planteles distintos: no se pueden compactar juntos.</span>}
                 {planteles.length === 1 && materiasSel.length > 1 && <span className="text-xs text-amber-600">⚠ Materias con distinto nombre (lo confirmarás al compactar).</span>}
                 {planteles.length === 1 && horarioAmbiguo && <span className="text-xs text-amber-600">⚠ Horarios distintos: elegirás uno.</span>}
@@ -610,12 +621,27 @@ function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: Compa
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 px-3 py-2">
-        {c.grupos.map((g) => (
-          <span key={g.slot_id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-white border border-emerald-200 text-slate-600 font-mono">
-            {g.grupo}{g.alumnos != null ? ` · ${g.alumnos}a` : ""}
-          </span>
-        ))}
+      <div className="px-3 py-2 space-y-1.5">
+        <div className="flex flex-wrap gap-1.5">
+          {c.grupos.map((g) => (
+            <span key={g.slot_id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] bg-white border border-emerald-200 text-slate-600">
+              <span className="font-mono">{g.grupo}</span>
+              <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} />
+            </span>
+          ))}
+        </div>
+        {(() => {
+          const conDato = c.grupos.filter((g) => g.alumnos != null);
+          const total = conDato.reduce((s, g) => s + (g.alumnos ?? 0), 0);
+          if (conDato.length === 0) return null;
+          const faltan = c.grupos.length - conDato.length;
+          return (
+            <div className="text-[11px] text-slate-500">
+              Aforo total: <b className="text-slate-700">{total} alumno(s)</b> en una sola aula
+              {faltan > 0 && <span className="text-amber-600"> · faltan {faltan} grupo(s) por capturar</span>}
+            </div>
+          );
+        })()}
       </div>
 
       {error && <div className="mx-3 mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
@@ -702,7 +728,7 @@ function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: Compa
                 <span className="font-mono text-xs text-slate-700">{g.grupo}</span>
                 <span className="text-slate-400">·</span>
                 <span className="text-slate-600 whitespace-nowrap">{horarioTxt(g)}</span>
-                {g.alumnos != null && <span className="text-[11px] text-slate-400">{g.alumnos} alum</span>}
+                <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} />
                 {g.es_chico && <span className="px-1.5 py-0.5 rounded-full text-[11px] bg-amber-100 text-amber-800 border border-amber-200">reducido</span>}
                 <span className="ml-auto text-xs">
                   {g.profesor ? <span className="text-slate-500">{g.profesor}</span> : <span className="text-amber-700">sin docente</span>}
@@ -734,9 +760,7 @@ function Fila({ g, resaltar = false, checked, onToggle, onChico, pending }: {
       <span className="font-mono text-xs text-slate-700">{g.grupo}</span>
       <span className="text-slate-400">·</span>
       <span className="text-slate-600 whitespace-nowrap">{horarioTxt(g)}</span>
-      {g.alumnos != null && (
-        <span className="ml-1 inline-block px-1.5 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-500">{g.alumnos} alum</span>
-      )}
+      <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} />
       <button
         type="button"
         onClick={() => onChico(g.grupo_id, !g.es_chico)}
@@ -749,6 +773,71 @@ function Fila({ g, resaltar = false, checked, onToggle, onChico, pending }: {
         {g.profesor ? <span className="text-slate-500">{g.profesor}</span> : <span className="text-amber-700">sin docente</span>}
       </span>
     </div>
+  );
+}
+
+// Editor inline del número de alumnos de un grupo. El dato vive en `grupos.alumnos`, así que
+// el cambio se refleja en todas las pantallas que lo usan (aula, alertas, motor). Click en la
+// pastilla → input; Enter/✓ guarda, Esc/✕ cancela. Reversible: siempre se puede volver a editar.
+function EditorAlumnos({ grupoId, alumnos }: { grupoId: number; alumnos: number | null }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(alumnos == null ? "" : String(alumnos));
+  const [error, setError] = useState<string | null>(null);
+
+  const abrir = () => { setValor(alumnos == null ? "" : String(alumnos)); setError(null); setEditando(true); };
+  const cerrar = () => { setEditando(false); setError(null); };
+
+  const guardar = () => {
+    const t = valor.trim();
+    const nuevo = t === "" ? null : Number(t);
+    if (nuevo != null && (!Number.isInteger(nuevo) || nuevo < 0 || nuevo > 1000)) {
+      setError("Entero de 0 a 1000."); return;
+    }
+    start(async () => {
+      const r = await editarAlumnosGrupo(grupoId, nuevo);
+      if (!r.ok) { setError(r.error); return; }
+      setEditando(false);
+      router.refresh();
+    });
+  };
+
+  if (!editando) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); e.preventDefault(); abrir(); }}
+        title="Capturar/editar alumnos del grupo (afecta aula, alertas y motor)."
+        className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] border ${
+          alumnos != null
+            ? "bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200"
+            : "bg-white text-slate-400 border-dashed border-slate-300 hover:bg-slate-50"}`}>
+        {alumnos != null ? `${alumnos} alum ✎` : "+ alumnos"}
+      </button>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1" onClick={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+      <input
+        type="number" min={0} max={1000} inputMode="numeric" autoFocus
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); guardar(); }
+          if (e.key === "Escape") { e.preventDefault(); cerrar(); }
+        }}
+        placeholder="alum"
+        className="w-16 border border-slate-300 rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-slate-400" />
+      <button type="button" onClick={guardar} disabled={pending}
+        title="Guardar" className="px-1 py-0.5 rounded text-[11px] bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60">
+        {pending ? "…" : "✓"}
+      </button>
+      <button type="button" onClick={cerrar} disabled={pending}
+        title="Cancelar" className="px-1 py-0.5 rounded text-[11px] border border-slate-300 text-slate-500 hover:bg-slate-50">✕</button>
+      {error && <span className="text-[10px] text-red-600">{error}</span>}
+    </span>
   );
 }
 
