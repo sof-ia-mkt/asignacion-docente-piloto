@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { sesionActual } from "@/lib/session";
-import { listarUsuarios, PASSWORD_TEMP } from "@/lib/usuarios-db";
+import { listarUsuarios, tieneAccesoTotal, ROL_DIRECCION_GENERAL, PASSWORD_TEMP } from "@/lib/usuarios-db";
 import { Panel } from "@/lib/ui";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { NuevoUsuarioForm } from "./form";
@@ -13,12 +13,13 @@ import {
 const ROL_LABEL: Record<string, string> = {
   academica: "Académica",
   carrera: "De carrera",
+  [ROL_DIRECCION_GENERAL]: "Dirección General",
 };
 
 export default async function UsuariosPage() {
   const yo = await sesionActual();
   if (!yo) redirect("/login");
-  if (!yo.es_admin) redirect("/");
+  if (!tieneAccesoTotal(yo)) redirect("/");
 
   const usuarios = await listarUsuarios();
 
@@ -62,9 +63,9 @@ export default async function UsuariosPage() {
                       {u.carrera ? ` · ${u.carrera}` : ""}
                     </td>
                     <td className="py-2 pr-3">
-                      {u.es_admin ? (
+                      {tieneAccesoTotal(u) ? (
                         <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-900 text-white border-slate-900">
-                          admin
+                          {u.rol === ROL_DIRECCION_GENERAL ? "Dir. General" : "admin"}
                         </span>
                       ) : (
                         <span className="text-slate-400 text-xs">—</span>
@@ -91,7 +92,7 @@ export default async function UsuariosPage() {
                           </ConfirmButton>
                         </form>
 
-                        {!soyYo && (
+                        {!soyYo && u.rol !== ROL_DIRECCION_GENERAL && (
                           <form action={fijarAdminAccion.bind(null, u.id, !u.es_admin)}>
                             <ConfirmButton
                               message={u.es_admin

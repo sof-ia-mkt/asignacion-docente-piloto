@@ -1,16 +1,17 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { sesionActual } from "@/lib/session";
-import { crearUsuario, resetearPassword, fijarActivo, fijarAdmin, PASSWORD_TEMP } from "@/lib/usuarios-db";
+import { crearUsuario, resetearPassword, fijarActivo, fijarAdmin, tieneAccesoTotal, ROL_DIRECCION_GENERAL, PASSWORD_TEMP } from "@/lib/usuarios-db";
 
-// Candado de servidor (no solo de UI): toda acción de administración exige sesión de admin.
+// Candado de servidor (no solo de UI): toda acción de administración exige acceso total
+// (admin clásico o Dirección General).
 async function exigirAdmin() {
   const u = await sesionActual();
-  if (!u?.es_admin) throw new Error("No autorizado: solo administradores.");
+  if (!u || !tieneAccesoTotal(u)) throw new Error("No autorizado: solo administradores.");
   return u;
 }
 
-const ROLES_VALIDOS = new Set(["academica", "carrera", ""]);
+const ROLES_VALIDOS = new Set(["academica", "carrera", ROL_DIRECCION_GENERAL, ""]);
 
 export type CrearUsuarioState = { error?: string; ok?: string };
 

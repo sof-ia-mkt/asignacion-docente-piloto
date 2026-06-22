@@ -141,7 +141,7 @@ export default async function SlotPage({
           {slot.docente ? (
             <span className="font-medium text-slate-800">{slot.docente}</span>
           ) : (
-            <span className="text-slate-400">sin asignar</span>
+            <span className="text-slate-400">sin propuesta</span>
           )}
           {slot.razon && <p className="mt-1 text-xs text-slate-400">{slot.razon}</p>}
           {slot.docente && (
@@ -291,7 +291,7 @@ export default async function SlotPage({
                   <td className="py-1.5 pr-2">{dispCell(c.choque)}</td>
                   <td className="py-1.5 text-right">
                     {slot.docente_id === c.profesor_id ? (
-                      <span className="text-xs text-slate-400">asignado</span>
+                      <span className="text-xs text-slate-400">{slot.estado === "confirmada" ? "aprobado" : "propuesto"}</span>
                     ) : requiereHorario ? (
                       <span className="text-xs text-slate-400" title="Captura el día y la hora de esta clase para poder asignar.">captura horario</span>
                     ) : c.choque ? (
@@ -312,7 +312,7 @@ export default async function SlotPage({
           </table>
         )}
         <p className="mt-3 text-xs text-slate-400">
-          La carga es el número de materias ya asignadas a ese docente en {act.nombre}.
+          La carga es el número de materias propuestas para ese docente en {act.nombre}.
           {" "}<span className="text-green-700">Libre</span> / <span className="text-red-700">choca</span> indica si ya tiene otra clase a esta misma hora.
           {requiereHorario
             ? " Esta clase presencial aún no tiene horario: captúralo arriba para poder asignar (así se evita empalmar al docente)."
@@ -361,7 +361,7 @@ export default async function SlotPage({
                     <td className="py-1.5 pr-2">{dispCell(p.choque)}</td>
                     <td className="py-1.5 text-right">
                       {slot.docente_id === p.id ? (
-                        <span className="text-xs text-slate-400">asignado</span>
+                        <span className="text-xs text-slate-400">{slot.estado === "confirmada" ? "aprobado" : "propuesto"}</span>
                       ) : requiereHorario ? (
                         <span className="text-xs text-slate-400" title="Captura el día y la hora de esta clase para poder asignar.">captura horario</span>
                       ) : p.choque ? (

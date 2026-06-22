@@ -7,7 +7,7 @@ import { AlertasPorTipo } from "./alertas-por-tipo";
 
 export default async function Home() {
   const [r, act] = await Promise.all([getResumen(), cicloActivo()]);
-  const sinAsignar = r.sep_total - r.asignados;
+  const sinPropuesta = r.sep_total - r.asignados;
   const pct = r.sep_total ? Math.round((r.asignados / r.sep_total) * 100) : 0;
   const totalAlertas = r.alertas.reduce((a, x) => a + x.n, 0);
   const esHistorial = act.estado === "historial";
@@ -26,10 +26,19 @@ export default async function Home() {
         <ExportButtons tipo="dashboard" params={{ vista: "resumen" }} className="shrink-0" />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <Card title={`Clases de ${act.nombre}`} value={r.sep_total} hint={esHistorial ? "en el ciclo" : "por asignar"} />
-        <Card title="Con docente asignado" value={`${r.asignados}`} hint={esHistorial ? `${pct}% · ya impartidas` : `${pct}% · ${r.confirmados} a mano, ${r.sugeridos} por revisar`} />
-        <Card title="Sin docente" value={sinAsignar} hint="sin docente aún" />
+        <Card
+          title={esHistorial ? "Con docente" : "Con propuesta de asignación"}
+          value={`${r.asignados}`}
+          hint={esHistorial
+            ? `${pct}% · ya impartidas`
+            : `${pct}% · incluye propuestas a revisión`} />
+        <Card
+          title={esHistorial ? "Ya impartidas" : "Asignados y revisados"}
+          value={r.confirmados}
+          hint={esHistorial ? "del ciclo" : "oficialmente asignados (aprobados)"} />
+        <Card title={esHistorial ? "Sin docente" : "Sin propuesta"} value={sinPropuesta} hint={esHistorial ? "sin docente" : "el sistema no propuso a nadie"} />
         <Card title="Alertas" value={totalAlertas} hint="ver detalle" />
       </div>
 

@@ -25,10 +25,13 @@ const EST: Record<string, string> = {
   sugerida: "bg-blue-100 text-blue-800 border-blue-200",
   rechazada: "bg-slate-100 text-slate-600 border-slate-200",
 };
-// "confirmada" es el estado por-MATERIA (hay un docente puesto en esa clase). Se muestra como
-// "Asignada": la palabra "Confirmada" queda reservada para la PROPUESTA del docente (ver abajo).
+// Estado por-MATERIA. OJO con el vocabulario (fue fuente de confusión):
+//  - 'sugerida'   = el MOTOR propuso un docente, pero NADIE lo ha aprobado todavía.
+//                   NO está asignado: es una propuesta a revisión y aprobación.
+//  - 'confirmada' = un humano (coordinación) revisó y APROBÓ esa propuesta. Esto sí es firme.
+//  - 'rechazada'  = no hubo a quién proponer (sin candidato).
 const EST_LABEL: Record<string, string> = {
-  confirmada: "Asignada", sugerida: "Sugerida", rechazada: "Sin asignar",
+  confirmada: "Aprobada", sugerida: "Propuesta (a revisión)", rechazada: "Sin propuesta",
 };
 
 export function Estado({ e }: { e: string | null }) {

@@ -9,9 +9,10 @@ export default async function RecomendacionPage({
   const plantel = (await searchParams).plantel ?? "";
   const { origen, calidad, cv } = await getDashRecomendacion(plantel);
   const totalAsig = origen.reduce((a, x) => a + x.n, 0);
-  const conCV = origen.filter((o) => o.origen !== "Solo historial").reduce((a, x) => a + x.n, 0);
+  const conCV = origen.filter((o) => o.origen.includes("CV")).reduce((a, x) => a + x.n, 0);
   const ORIGEN_COLOR: Record<string, string> = {
     "Solo historial": COLORS.blue, "Historial + CV": COLORS.violet, "Solo CV": COLORS.green,
+    "Manual (coordinación)": COLORS.amber,
   };
   const cvData = [
     { etiqueta: "Con CV", n: cv.procesados, color: COLORS.green },
@@ -24,10 +25,10 @@ export default async function RecomendacionPage({
         <ExportButtons tipo="dashboard" params={{ vista: "recomendacion", plantel }} />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card title="Asignaciones" value={totalAsig} />
+        <Card title="Propuestas" value={totalAsig} />
         <Card title="Apoyadas en CV" value={conCV} hint={`${totalAsig ? Math.round((conCV / totalAsig) * 100) : 0}% del total`} />
         <Card title="Puntaje promedio" value={calidad.puntaje_avg} hint="fuerza de la recomendación" />
-        <Card title="Asignadas a mano" value={calidad.confirmadas} hint={`${calidad.automaticas} automáticas`} />
+        <Card title="Hechas a mano" value={calidad.manuales} hint={`${calidad.automaticas} por el motor`} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">

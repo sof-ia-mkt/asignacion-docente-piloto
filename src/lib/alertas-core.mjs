@@ -216,13 +216,42 @@ export async function calcularAlertas(query, cicloId) {
     porAula.get(s.aula_id).push(s);
   }
   for (const [aulaId, lista] of porAula) {
-    for (let i = 0; i < lista.length; i++) for (let j = i + 1; j < lista.length; j++) {
-      if (!overlap(lista[i], lista[j])) continue;
-      const a = lista[i], b = lista[j];
-      alertas.push({
-        tipo: "choque_aula", severidad: "alta", slot_id: a.id, slot_id_2: b.id, profesor_id: null,
-        detalle: `El salón ${claveAula.get(aulaId) ?? "?"} tiene dos clases encimadas el ${a.dia}: "${a.materia}" (${a.grupo ?? "?"}) y "${b.materia}" (${b.grupo ?? "?"}) a la misma hora. Cambia de aula o de horario una de las dos.`,
-      });
+    // Sólo clases con horario COMPLETO pueden chocar: las que no tienen día/hora se reportan
+    // como "sin_aula" o quedan fuera; compararlas aquí generaba miles de choques fantasma.
+    const conHorario = lista.filter((s) => s.dia && Number.isFinite(s.ini) && Number.isFinite(s.fin));
+    // Agrupamos por día y barremos por hora de inicio formando RACIMOS de clases que se
+    // enciman en cadena. Emitimos UNA alerta por racimo (no un par por cada combinación):
+    // un salón con N clases encimadas era N·(N-1)/2 alertas; ahora es 1.
+    const porDia = new Map();   // dia -> [slot]
+    for (const s of conHorario) {
+      if (!porDia.has(s.dia)) porDia.set(s.dia, []);
+      porDia.get(s.dia).push(s);
+    }
+    for (const [dia, clases] of porDia) {
+      clases.sort((a, b) => a.ini - b.ini);
+      let i = 0;
+      while (i < clases.length) {
+        // El racimo arranca en i y se extiende mientras la siguiente clase empiece antes
+        // de que termine la última hora cubierta por el racimo.
+        let maxFin = clases[i].fin;
+        let j = i + 1;
+        while (j < clases.length && clases[j].ini < maxFin) {
+          if (clases[j].fin > maxFin) maxFin = clases[j].fin;
+          j++;
+        }
+        const grupo = clases.slice(i, j);
+        if (grupo.length >= 2) {
+          const a = grupo[0], b = grupo[1];
+          const clave = claveAula.get(aulaId) ?? "?";
+          const detalle = grupo.length === 2
+            ? `El salón ${clave} tiene dos clases encimadas el ${dia}: "${a.materia}" (${a.grupo ?? "?"}) y "${b.materia}" (${b.grupo ?? "?"}) a la misma hora. Cambia de aula o de horario una de las dos.`
+            : `El salón ${clave} está sobreasignado el ${dia}: ${grupo.length} clases se enciman en el mismo horario (p. ej. "${a.materia}" y "${b.materia}"). Reparte estas clases en otros salones u horarios.`;
+          alertas.push({
+            tipo: "choque_aula", severidad: "alta", slot_id: a.id, slot_id_2: b.id, profesor_id: null, detalle,
+          });
+        }
+        i = j > i + 1 ? j : i + 1;
+      }
     }
   }
 

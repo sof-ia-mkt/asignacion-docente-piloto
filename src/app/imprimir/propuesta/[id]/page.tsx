@@ -63,7 +63,7 @@ export default async function PropuestaPage({ params }: { params: Promise<{ id: 
       <section className="mb-5 grid grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="rounded-lg border border-slate-300 px-4 py-3">
           <div className="text-2xl font-semibold text-slate-900">{totales.materias}</div>
-          <div className="text-xs text-slate-500">Materias asignadas</div>
+          <div className="text-xs text-slate-500">Materias propuestas</div>
         </div>
         <div className="rounded-lg border border-slate-300 px-4 py-3">
           <div className="text-2xl font-semibold text-slate-900">{totales.horasSemana}</div>
@@ -80,7 +80,7 @@ export default async function PropuestaPage({ params }: { params: Promise<{ id: 
       {/* Tabla de materias */}
       <section className="mb-6">
         {clases.length === 0 ? (
-          <p className="text-sm text-slate-400">Este docente todavía no tiene materias asignadas para el periodo.</p>
+          <p className="text-sm text-slate-400">Este docente todavía no tiene materias propuestas para el periodo.</p>
         ) : (
           <table className="w-full text-sm border-collapse">
             <thead>

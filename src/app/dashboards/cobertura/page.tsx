@@ -8,11 +8,11 @@ export default async function CoberturaPage({
 }: { searchParams: Promise<{ plantel?: string }> }) {
   const plantel = (await searchParams).plantel ?? "";
   const { estados: e, porTipo, porTurno, porCuatri } = await getDashCobertura(plantel);
-  const sinAsignar = e.total - e.asignados;
+  const sinPropuesta = e.total - e.asignados;
   const pct = e.total ? Math.round((e.asignados / e.total) * 100) : 0;
   const series = [
     { key: "n", label: "Total", color: COLORS.slate },
-    { key: "asig", label: "Con docente", color: COLORS.green },
+    { key: "asig", label: "Con propuesta", color: COLORS.blue },
   ];
 
   return (
@@ -22,23 +22,23 @@ export default async function CoberturaPage({
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title="Total de clases" value={e.total} />
-        <Card title="Con docente asignado" value={`${e.asignados}`} hint={`${pct}% del total`} />
-        <Card title="Sin docente" value={sinAsignar} />
-        <Card title="Asignadas a mano" value={e.confirmados} hint={`${e.sugeridos} sugeridas por revisar`} />
+        <Card title="Con propuesta de asignación" value={`${e.asignados}`} hint={`${pct}% del total`} />
+        <Card title="Sin propuesta" value={sinPropuesta} />
+        <Card title="Aprobadas" value={e.confirmados} hint={`${e.sugeridos} propuestas a revisión`} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Panel title="Con docente vs sin docente">
+        <Panel title="Con propuesta vs sin propuesta">
           <Donut data={[
-            { name: "Con docente", value: e.asignados, color: COLORS.green },
-            { name: "Sin docente", value: sinAsignar, color: COLORS.red },
+            { name: "Con propuesta", value: e.asignados, color: COLORS.blue },
+            { name: "Sin propuesta", value: sinPropuesta, color: COLORS.red },
           ]} />
         </Panel>
         <Panel title="Embudo de estados">
           <Donut data={[
-            { name: "Asignadas a mano", value: e.confirmados, color: COLORS.green },
-            { name: "Sugeridas (sin revisar)", value: e.sugeridos, color: COLORS.blue },
-            { name: "Sin docente", value: sinAsignar, color: COLORS.red },
+            { name: "Aprobadas", value: e.confirmados, color: COLORS.green },
+            { name: "A revisión (propuestas)", value: e.sugeridos, color: COLORS.blue },
+            { name: "Sin propuesta", value: sinPropuesta, color: COLORS.red },
           ]} />
         </Panel>
       </div>

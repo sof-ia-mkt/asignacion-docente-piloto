@@ -25,6 +25,15 @@ const BLOQUEO_MINUTOS = 15;
 // importarla desde acciones y pantallas; el seed (scripts/cargar_usuarios.mjs) la replica.
 export const PASSWORD_TEMP = "Cenyca!!23";
 
+// Rol con acceso total a la plataforma (todo lo que ve un admin, incluida la gestión
+// de usuarios). El acceso lo otorga el ROL mismo, sin depender del flag es_admin.
+export const ROL_DIRECCION_GENERAL = "direccion_general";
+
+/** True si la persona ve y puede hacer TODO: admin clásico o Dirección General. */
+export function tieneAccesoTotal(u: { es_admin: boolean; rol: string | null }): boolean {
+  return u.es_admin || u.rol === ROL_DIRECCION_GENERAL;
+}
+
 const COLS = "id, usuario, nombre, correo, rol, carrera, es_admin, activo, debe_cambiar_password, creado_en";
 
 /** Trae el usuario (incluye hash y estado de bloqueo) para verificar el login. null si no existe o está inactivo. */

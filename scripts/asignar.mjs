@@ -248,6 +248,10 @@ const presenciales = [...presUnidades.values()]
 
 for (const miembros of presenciales) {
   const s = miembros[0];   // todos comparten día/hora (horario de la clase)
+  // Sin horario completo NO se puede saber si un aula está libre: el guardia `overlap`
+  // trata "sin día/hora" como "nunca choca", así que TODAS caerían en el primer salón
+  // (el más chico), generando miles de choques fantasma. Se quedan sin aula a propósito.
+  if (!s.dia || !Number.isFinite(s.ini) || !Number.isFinite(s.fin)) { sinAula++; continue; }
   const al = aforoUnidad(miembros);
   const caben = aulas.filter((a) => al == null || a.capacidad >= al);
   const libre = caben.find((a) => !(aulaOcc.get(a.id) || []).some((o) => overlap(o, s)));

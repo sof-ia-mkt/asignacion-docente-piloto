@@ -6,6 +6,7 @@ import "./globals.css";
 import { getCiclos, cicloActivo } from "@/lib/ciclo";
 import { CicloSelector } from "./ciclo-selector";
 import { sesionActual } from "@/lib/session";
+import { tieneAccesoTotal } from "@/lib/usuarios-db";
 import { cerrarSesionAccion } from "./login/actions";
 
 export const metadata: Metadata = {
@@ -50,7 +51,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   }
 
   const [ciclos, activo] = await Promise.all([getCiclos(), cicloActivo()]);
-  const navItems = usuario.es_admin ? [...nav, { href: "/usuarios", label: "Usuarios" }] : nav;
+  const accesoTotal = tieneAccesoTotal(usuario);
+  const navItems = accesoTotal ? [...nav, { href: "/usuarios", label: "Usuarios" }] : nav;
   return (
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
@@ -76,7 +78,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <Link href="/cambiar-password"
                 className="text-xs text-slate-300 hover:text-white whitespace-nowrap"
                 title="Cambiar mi contraseña">
-                {usuario.nombre}{usuario.es_admin ? " · admin" : ""}
+                {usuario.nombre}{accesoTotal ? " · admin" : ""}
               </Link>
               <form action={cerrarSesionAccion}>
                 <button type="submit" className="text-xs text-slate-300 hover:text-white underline whitespace-nowrap">

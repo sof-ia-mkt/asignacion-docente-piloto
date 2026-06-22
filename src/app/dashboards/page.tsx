@@ -14,7 +14,7 @@ export default async function DashboardsHome({
     cicloActivo(),
   ]);
   const e = cob.estados;
-  const sinAsignar = e.total - e.asignados;
+  const sinPropuesta = e.total - e.asignados;
   const pct = e.total ? Math.round((e.asignados / e.total) * 100) : 0;
   const totalAlertas = rie.porTipo.reduce((a, x) => a + x.n, 0);
   const altas = rie.porTipo.filter((x) => x.severidad === "alta").reduce((a, x) => a + x.n, 0);
@@ -30,9 +30,9 @@ export default async function DashboardsHome({
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card title={`Clases de ${act.nombre}`} value={e.total} hint="por asignar" />
-        <Card title="Con docente asignado" value={`${pct}%`} hint={`${e.asignados} clases con docente`} />
-        <Card title="Sin docente" value={sinAsignar} hint="sin docente aún" />
-        <Card title="Asignadas a mano" value={e.confirmados} hint={`${e.sugeridos} sugeridas por revisar`} />
+        <Card title="Con propuesta de asignación" value={`${pct}%`} hint={`${e.asignados} clases con propuesta`} />
+        <Card title="Sin propuesta" value={sinPropuesta} hint="el sistema no propuso a nadie" />
+        <Card title="Aprobadas" value={e.confirmados} hint={`${e.sugeridos} propuestas a revisión`} />
         <Card title="Docentes con carga" value={doc.resumen.docentes} hint={`promedio ${doc.resumen.avgc} materias`} />
         <Card title="Sobrecargados" value={doc.resumen.sobre} hint=">12 materias" />
         <Card title="Alertas" value={totalAlertas} hint={`${altas} de prioridad alta`} />
@@ -40,16 +40,16 @@ export default async function DashboardsHome({
       </div>
 
       <div className="grid md:grid-cols-2 gap-4">
-        <Panel title="Avance de la asignación">
+        <Panel title="Avance de propuestas">
           <Donut data={[
-            { name: "Con docente", value: e.asignados, color: "#16a34a" },
-            { name: "Sin docente", value: sinAsignar, color: "#dc2626" },
+            { name: "Con propuesta", value: e.asignados, color: "#2563eb" },
+            { name: "Sin propuesta", value: sinPropuesta, color: "#dc2626" },
           ]} />
         </Panel>
-        <Panel title="Avance de revisión">
+        <Panel title="Avance de aprobación">
           <Donut data={[
-            { name: "Por revisar", value: e.sugeridos, color: "#2563eb" },
-            { name: "Revisadas a mano", value: e.confirmados, color: "#16a34a" },
+            { name: "A revisión", value: e.sugeridos, color: "#2563eb" },
+            { name: "Aprobadas", value: e.confirmados, color: "#16a34a" },
           ]} />
         </Panel>
       </div>

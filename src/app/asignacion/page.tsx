@@ -58,7 +58,7 @@ export default async function AsignacionPage({
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Asignación · {act.nombre}</h1>
           <p className="text-sm text-slate-500">
-            {total} materias por grupo{plantel ? ` en ${plantelCorto(plantel)}` : " (todos los planteles)"}. Sin asignar aparecen primero.
+            {total} materias por grupo{plantel ? ` en ${plantelCorto(plantel)}` : " (todos los planteles)"}. Sin propuesta aparecen primero.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -69,7 +69,7 @@ export default async function AsignacionPage({
               tipo: tipo || undefined, q: qstr || undefined,
             })}>
               <ConfirmButton
-                message={`¿Aceptar las ${sugeridas} sugerencias que estás viendo (${ambito})? Quedarán como "Asignada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
+                message={`¿Aprobar las ${sugeridas} propuestas que estás viendo (${ambito})? Quedarán como "Aprobada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
                 className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm whitespace-nowrap hover:bg-green-700">
                 Aceptar {sugeridas} sugerida{sugeridas === 1 ? "" : "s"}
               </ConfirmButton>

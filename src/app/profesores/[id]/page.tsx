@@ -184,15 +184,15 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       {/* Números rápidos */}
       <div className="grid grid-cols-3 gap-2">
         {stat(historial.length, "Clases que dio antes", "text-slate-700")}
-        {stat(nClasesUnicas, `Asignadas en ${act.nombre}`, "text-green-700")}
+        {stat(nClasesUnicas, `Propuestas en ${act.nombre}`, "text-blue-700")}
         {stat(candidatas.length, "Materias que puede dar", "text-blue-700")}
       </div>
 
       {/* Lo que da AHORA: lo más accionable arriba */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-medium text-slate-700">Clases de {act.nombre} asignadas a este docente</h2>
+        <h2 className="text-sm font-medium text-slate-700">Clases de {act.nombre} propuestas para este docente</h2>
         <p className="mb-3 text-xs text-slate-400">
-          &quot;Sugerida&quot; = el sistema la propuso, falta revisarla · &quot;Asignada&quot; = coordinación la fijó en esa clase. (La propuesta del docente se confirma arriba, una vez enviada.)
+          &quot;Propuesta (a revisión)&quot; = el sistema la propuso, falta revisarla y aprobarla · &quot;Aprobada&quot; = coordinación la aprobó en esa clase. (La propuesta del docente se confirma arriba, una vez enviada.)
         </p>
         {asignaciones.length === 0 ? (
           <p className="text-sm text-slate-400">Todavía no tiene clases asignadas para {act.nombre}.</p>
@@ -231,9 +231,9 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
                         {a.estado === "sugerida" && (
                           <form action={confirmar.bind(null, a.slot_id, prof.id)}>
                             <ConfirmButton
-                              message={`¿Asignar a ${prof.nombre} en "${a.materia}"${a.grupo ? ` · ${a.grupo}` : ""}? La clase quedará fijada (Asignada).`}
+                              message={`¿Aprobar la propuesta de ${prof.nombre} en "${a.materia}"${a.grupo ? ` · ${a.grupo}` : ""}? La clase quedará aprobada.`}
                               className="text-green-700 hover:underline text-xs font-medium">
-                              Asignar
+                              Aprobar
                             </ConfirmButton>
                           </form>
                         )}

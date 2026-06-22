@@ -37,7 +37,7 @@ export function MateriasAsignables({
     const tieneGrupos = c.grupos.length > 0;
     if (c.yaLaDa) {
       return (
-        <span key={c.materia_id} title={`${c.razon ? c.razon + " · " : ""}puntaje ${c.puntaje} · ya asignada`}
+        <span key={c.materia_id} title={`${c.razon ? c.razon + " · " : ""}puntaje ${c.puntaje} · ya la tiene en su propuesta`}
           className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm border bg-slate-100 text-slate-400 border-slate-200">
           <span className="text-green-600 text-xs">✓</span>{c.materia}
         </span>
@@ -113,7 +113,7 @@ export function MateriasAsignables({
         <h2 className="text-sm font-medium text-slate-700">Materias que puede dar</h2>
         <p className="mt-0.5 text-xs text-slate-400">
           Ordenadas por qué tan fuerte es la señal{disponibles > 0 ? ` · ${disponibles} disponible${disponibles === 1 ? "" : "s"} para asignar` : ""}.
-          {" "}<span className="text-green-600">✓</span> = ya la tiene asignada · <span className="text-blue-700">clic en una materia</span> para ver sus grupos abiertos y asignarlo ahí mismo.
+          {" "}<span className="text-green-600">✓</span> = ya la tiene en su propuesta · <span className="text-blue-700">clic en una materia</span> para ver sus grupos abiertos y asignarlo ahí mismo.
         </p>
       </div>
 
@@ -163,7 +163,7 @@ export function MateriasAsignables({
           </div>
           <div className="divide-y divide-blue-100">{sel.grupos.map((g) => grupo(sel, g))}</div>
           <p className="px-3 py-2 text-[11px] text-slate-400">
-            Al asignar queda como decisión de coordinación (Asignada). Las clases en
+            Al asignar queda como decisión de coordinación (Aprobada). Las clases en
             <span className="text-red-700"> rojo</span> chocan con otra que ya tiene a esa hora.
           </p>
         </div>

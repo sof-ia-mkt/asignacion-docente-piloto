@@ -17,7 +17,11 @@ export default async function DocentesDashPage({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-500">
+          La carga es la <b className="text-slate-700">carga propuesta</b>: cuenta las clases con propuesta
+          (a revisión + aprobadas), no solo las ya aprobadas.
+        </p>
         <ExportButtons tipo="dashboard" params={{ vista: "docentes", plantel }} />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -36,9 +40,9 @@ export default async function DocentesDashPage({
         </Panel>
       </div>
 
-      <Panel title={`Docentes sin asignación (${sinAsignar.length})`}>
+      <Panel title={`Docentes sin propuesta (${sinAsignar.length})`}>
         {sinAsignar.length === 0 ? (
-          <p className="text-sm text-slate-400">Todos los docentes asignables tienen al menos una materia.</p>
+          <p className="text-sm text-slate-400">Todos los docentes asignables tienen al menos una materia propuesta.</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {sinAsignar.map((d) => (

@@ -9,21 +9,24 @@ export async function getResumen() {
   // En un ciclo CERRADO (historial) el docente está en slots.docente_id (lo que ya dio),
   // no en asignaciones. En un ciclo en planeación, al revés. Contamos del lado correcto para
   // que "con docente / sin docente" tenga sentido en ambos (antes el historial salía 0).
+  // Excluimos las clases parqueadas (no_apertura): no se van a abrir, así que no cuentan ni en
+  // el total ni en lo asignado. MISMO criterio que los dashboards (getDashCobertura/Docentes),
+  // para que el panel y los monitores SIEMPRE den el mismo número.
   const esHist = act.estado === "historial";
   const conDocente = esHist
-    ? `(select count(*) from slots where ciclo_id=${act.id} and docente_id is not null)::int`
+    ? `(select count(*) from slots where ciclo_id=${act.id} and not no_apertura and docente_id is not null)::int`
     : `(select count(*) from asignaciones a join slots s on s.id=a.slot_id
-          where s.ciclo_id=${act.id} and a.profesor_id is not null)::int`;
+          where s.ciclo_id=${act.id} and not s.no_apertura and a.profesor_id is not null)::int`;
   // En historial todo ya está dado: lo damos por "confirmado" y nada "por revisar".
   const confirmados = esHist ? conDocente : `(select count(*) from asignaciones a join slots s on s.id=a.slot_id
-          where s.ciclo_id=${act.id} and a.estado='confirmada')::int`;
+          where s.ciclo_id=${act.id} and not s.no_apertura and a.estado='confirmada')::int`;
   const sugeridos = esHist ? "0" : `(select count(*) from asignaciones a join slots s on s.id=a.slot_id
-          where s.ciclo_id=${act.id} and a.estado='sugerida' and a.profesor_id is not null)::int`;
+          where s.ciclo_id=${act.id} and not s.no_apertura and a.estado='sugerida' and a.profesor_id is not null)::int`;
   const [r] = await q<{
     sep_total: number; asignados: number; confirmados: number; sugeridos: number;
     cvs: number; profes: number; materias: number;
   }>(`select
-        (select count(*) from slots where ciclo_id=${act.id})::int sep_total,
+        (select count(*) from slots where ciclo_id=${act.id} and not no_apertura)::int sep_total,
         ${conDocente} asignados,
         ${confirmados} confirmados,
         ${sugeridos} sugeridos,
@@ -653,16 +656,20 @@ export async function getDashRecomendacion(plantel?: string) {
   const p = plantel ? [plantel] : [];
   const origen = await q<{ origen: string; n: number }>(
     `select case
+              when not a.automatica then 'Manual (coordinación)'
               when a.razon ilike '%CV%' and (a.razon ilike '%mayo%' or a.razon ilike '%impart%') then 'Historial + CV'
               when a.razon ilike '%CV%' then 'Solo CV'
               else 'Solo historial' end origen,
             count(*)::int n
        from asignaciones a join slots s on s.id = a.slot_id
       where a.profesor_id is not null ${cond} group by 1 order by n desc`, p);
-  const [calidad] = await q<{ puntaje_avg: number; automaticas: number; confirmadas: number }>(
+  // `manuales` = asignaciones hechas a mano por coordinación (automatica=false). OJO: NO es lo
+  // mismo que estado='confirmada' (aprobada); una manual puede seguir 'sugerida'. El panel usa
+  // confirmados (estado) para "oficialmente asignados"; aquí medimos motor vs. mano.
+  const [calidad] = await q<{ puntaje_avg: number; automaticas: number; manuales: number }>(
     `select round(avg(a.puntaje),1)::float puntaje_avg,
             count(*) filter (where a.automatica)::int automaticas,
-            count(*) filter (where not a.automatica)::int confirmadas
+            count(*) filter (where not a.automatica)::int manuales
        from asignaciones a join slots s on s.id = a.slot_id
       where a.profesor_id is not null ${cond}`, p);
   // El pipeline de CVs es global (no depende del plantel).

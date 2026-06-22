@@ -51,9 +51,9 @@ export function AsignacionFiltros({
 
   const segmentos = [
     { v: "", label: "Todas", n: conteo.total },
-    { v: "sin_asignar", label: "Sin docente", n: conteo.sin },
+    { v: "sin_asignar", label: "Sin propuesta", n: conteo.sin },
     { v: "por_revisar", label: "Por revisar", n: conteo.rev },
-    { v: "asignado", label: "Confirmadas", n: conteo.con },
+    { v: "asignado", label: "Aprobadas", n: conteo.con },
     // "No se abren": solo aparece cuando hay clases parqueadas (o si la estás viendo),
     // para no estorbar cuando no se usa.
     ...(conteo.parked > 0 || estado === "no_apertura"

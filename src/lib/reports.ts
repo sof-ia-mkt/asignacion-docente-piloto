@@ -35,7 +35,7 @@ const slug = (s: string) =>
     .toLowerCase() || "datos";
 
 const estadoLabel = (e: string | null): string =>
-  e === "confirmada" ? "Asignada" : e === "sugerida" ? "Sugerida" : "Sin asignar";
+  e === "confirmada" ? "Aprobada" : e === "sugerida" ? "Propuesta (a revisión)" : "Sin propuesta";
 
 const sevLabel = (s: string): string =>
   s === "alta" ? "Alta" : s === "media" ? "Media" : s === "baja" ? "Baja" : s;
@@ -60,7 +60,7 @@ async function reporteAsignacion(p: URLSearchParams): Promise<Report> {
   const { rows, total } = await getSlotsSeptiembre(f, 100000);
   const ambito = f.plantel ? plantelCorto(f.plantel) : "todos los planteles";
   const filtros = [
-    f.estado === "asignado" ? "con docente" : f.estado === "sin_asignar" ? "sin docente" : "",
+    f.estado === "asignado" ? "aprobadas" : f.estado === "sin_asignar" ? "sin propuesta" : f.estado === "por_revisar" ? "a revisión" : "",
     f.cuatri ? `cuatri ${f.cuatri}` : "",
     f.tipo ? `tipo ${f.tipo}` : "",
     f.q ? `búsqueda "${f.q}"` : "",
@@ -109,7 +109,7 @@ async function reporteProfesores(p: URLSearchParams): Promise<Report> {
     tables: [
       {
         name: "Profesores",
-        headers: ["Docente", "Coordinación", "CV", "Plantel(es)", "Licenciatura", "Años exp.", "Materias candidatas", "Asignadas"],
+        headers: ["Docente", "Coordinación", "CV", "Plantel(es)", "Licenciatura", "Años exp.", "Materias candidatas", "Clases propuestas"],
         rows: profes.map((d) => [
           d.nombre,
           d.coordinador ?? "",
@@ -251,15 +251,15 @@ async function reporteDashboard(p: URLSearchParams): Promise<Report> {
           headers: ["Indicador", "Valor"],
           rows: [
             ["Total de clases", e.total],
-            ["Con docente", e.asignados],
-            ["Sin docente", e.total - e.asignados],
-            ["Asignadas a mano", e.confirmados],
-            ["Sugeridas (por revisar)", e.sugeridos],
+            ["Con propuesta de asignación", e.asignados],
+            ["Sin propuesta", e.total - e.asignados],
+            ["Aprobadas", e.confirmados],
+            ["Propuestas a revisión", e.sugeridos],
           ],
         },
-        { name: "Por tipo", headers: ["Tipo", "Total", "Con docente"], rows: porTipo.map((r) => [r.tipo, r.n, r.asig]) },
-        { name: "Por turno", headers: ["Turno", "Total", "Con docente"], rows: porTurno.map((r) => [r.turno, r.n, r.asig]) },
-        { name: "Por cuatrimestre", headers: ["Cuatrimestre", "Total", "Con docente"], rows: porCuatri.map((r) => [r.cuatrimestre, r.n, r.asig]) },
+        { name: "Por tipo", headers: ["Tipo", "Total", "Con propuesta"], rows: porTipo.map((r) => [r.tipo, r.n, r.asig]) },
+        { name: "Por turno", headers: ["Turno", "Total", "Con propuesta"], rows: porTurno.map((r) => [r.turno, r.n, r.asig]) },
+        { name: "Por cuatrimestre", headers: ["Cuatrimestre", "Total", "Con propuesta"], rows: porCuatri.map((r) => [r.cuatrimestre, r.n, r.asig]) },
       ],
     };
   }
@@ -322,8 +322,8 @@ async function reporteDashboard(p: URLSearchParams): Promise<Report> {
           headers: ["Indicador", "Valor"],
           rows: [
             ["Puntaje promedio", calidad.puntaje_avg],
-            ["Automáticas", calidad.automaticas],
-            ["Asignadas a mano", calidad.confirmadas],
+            ["Automáticas (motor)", calidad.automaticas],
+            ["Hechas a mano", calidad.manuales],
           ],
         },
         {
@@ -355,10 +355,10 @@ async function reporteDashboard(p: URLSearchParams): Promise<Report> {
         headers: ["Indicador", "Valor"],
         rows: [
           ["Clases de septiembre", e.total],
-          ["Con docente", e.asignados],
-          ["Sin docente", e.total - e.asignados],
-          ["Asignadas a mano", e.confirmados],
-          ["Sugeridas (por revisar)", e.sugeridos],
+          ["Con propuesta de asignación", e.asignados],
+          ["Sin propuesta", e.total - e.asignados],
+          ["Aprobadas", e.confirmados],
+          ["Propuestas a revisión", e.sugeridos],
           ["Docentes con carga", doc.resumen.docentes],
           ["Carga promedio", doc.resumen.avgc],
           ["Sobrecargados (>12)", doc.resumen.sobre],

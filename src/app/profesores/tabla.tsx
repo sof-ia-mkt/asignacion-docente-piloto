@@ -99,7 +99,7 @@ export function TablaProfesores({ profes }: { profes: ProfesorFila[] }) {
               <th className="px-3 py-2 font-medium">Licenciatura</th>
               <th className="px-3 py-2 font-medium text-right">Exp.</th>
               <th className="px-3 py-2 font-medium text-right">Materias candidatas</th>
-              <th className="px-3 py-2 font-medium text-right">Asignadas</th>
+              <th className="px-3 py-2 font-medium text-right">Clases propuestas</th>
               <th className="px-2 py-2 font-medium text-right sticky right-0 bg-slate-50"></th>
             </tr>
           </thead>

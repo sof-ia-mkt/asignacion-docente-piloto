@@ -27,6 +27,7 @@ export function NuevoUsuarioForm() {
           <option value="">Sin coordinación (solo admin)</option>
           <option value="academica">Académica</option>
           <option value="carrera">De carrera</option>
+          <option value="direccion_general">Dirección General (acceso total)</option>
         </select>
       </div>
       <div>
