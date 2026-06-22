@@ -68,6 +68,14 @@ export async function getProfesores(cv: "" | "cv" | "sincv" = "", coordinador = 
       order by p.nombre`, params);
 }
 
+// Valores reales del campo `coordinador` en profesores (las únicas opciones que filtran algo).
+export async function coordinadoresConProfes(): Promise<string[]> {
+  const rows = await q<{ coordinador: string }>(
+    `select distinct coordinador from profesores
+      where coordinador is not null and coordinador <> '' order by coordinador`);
+  return rows.map((r) => r.coordinador);
+}
+
 export async function getProfesoresConteo() {
   const [r] = await q<{ total: number; con_cv: number }>(
     `select count(*)::int total,
