@@ -55,6 +55,10 @@ async function reporteAsignacion(p: URLSearchParams): Promise<Report> {
     plantel: p.get("plantel") ?? "",
     cuatri: p.get("cuatri") ?? "",
     tipo: p.get("tipo") ?? "",
+    plan: p.get("plan") ?? "",
+    turno: p.get("turno") ?? "",
+    modalidad: p.get("modalidad") ?? "",
+    comp: p.get("comp") ?? "",
   };
   // Sin paginar: el export trae TODAS las filas que cumplen el filtro.
   const { rows, total } = await getSlotsSeptiembre(f, 100000);
@@ -63,6 +67,10 @@ async function reporteAsignacion(p: URLSearchParams): Promise<Report> {
     f.estado === "asignado" ? "aprobadas" : f.estado === "sin_asignar" ? "sin propuesta" : f.estado === "por_revisar" ? "a revisión" : "",
     f.cuatri ? `cuatri ${f.cuatri}` : "",
     f.tipo ? `tipo ${f.tipo}` : "",
+    f.plan ? `carrera ${f.plan}` : "",
+    f.turno ? `turno ${f.turno}` : "",
+    f.modalidad ? `modalidad ${f.modalidad}` : "",
+    f.comp === "si" ? "compactadas" : f.comp === "no" ? "sin compactar" : "",
     f.q ? `búsqueda "${f.q}"` : "",
   ].filter(Boolean);
   return {

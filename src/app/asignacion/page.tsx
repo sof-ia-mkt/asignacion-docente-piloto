@@ -10,20 +10,24 @@ import { TablaAsignacion } from "./tabla-asignacion";
 
 export default async function AsignacionPage({
   searchParams,
-}: { searchParams: Promise<{ estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string; page?: string }> }) {
+}: { searchParams: Promise<{ estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string; plan?: string; turno?: string; modalidad?: string; comp?: string; page?: string }> }) {
   const sp = await searchParams;
   const estado = sp.estado ?? "";
   const qstr = sp.q ?? "";
   const plantel = sp.plantel ?? "";
   const cuatri = sp.cuatri ?? "";
   const tipo = sp.tipo ?? "";
+  const plan = sp.plan ?? "";
+  const turno = sp.turno ?? "";
+  const modalidad = sp.modalidad ?? "";
+  const comp = sp.comp ?? "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const [{ rows, total, pages, limit }, planteles, sugeridas, facetas, conteo, act] = await Promise.all([
-    getSlotsSeptiembre({ estado, q: qstr, plantel, cuatri, tipo, page }),
+    getSlotsSeptiembre({ estado, q: qstr, plantel, cuatri, tipo, plan, turno, modalidad, comp, page }),
     getPlanteles(),
-    contarSugeridas({ plantel, cuatri, tipo, q: qstr }),
+    contarSugeridas({ plantel, cuatri, tipo, q: qstr, plan, turno, modalidad, comp }),
     getFacetasSlots(plantel),
-    getConteoPorEstado({ q: qstr, plantel, cuatri, tipo }),
+    getConteoPorEstado({ q: qstr, plantel, cuatri, tipo, plan, turno, modalidad, comp }),
     cicloActivo(),
   ]);
   // Texto que describe el alcance EXACTO del botón "Aceptar N sugeridas": los mismos filtros
@@ -32,6 +36,10 @@ export default async function AsignacionPage({
     plantel ? plantelCorto(plantel) : null,
     cuatri ? `cuatri ${cuatri}` : null,
     tipo ? tipo : null,
+    plan ? plan : null,
+    turno ? `turno ${turno}` : null,
+    modalidad ? modalidad : null,
+    comp === "si" ? "compactadas" : comp === "no" ? "sin compactar" : null,
     qstr ? `"${qstr}"` : null,
   ].filter(Boolean);
   const ambito = partesAmbito.length ? partesAmbito.join(", ") : "todos los planteles";
@@ -41,7 +49,9 @@ export default async function AsignacionPage({
   const href = (cambios: Record<string, string>) => {
     const base = {
       ...(estado ? { estado } : {}), ...(qstr ? { q: qstr } : {}), ...(plantel ? { plantel } : {}),
-      ...(cuatri ? { cuatri } : {}), ...(tipo ? { tipo } : {}), ...(page > 1 ? { page: String(page) } : {}),
+      ...(cuatri ? { cuatri } : {}), ...(tipo ? { tipo } : {}),
+      ...(plan ? { plan } : {}), ...(turno ? { turno } : {}), ...(modalidad ? { modalidad } : {}), ...(comp ? { comp } : {}),
+      ...(page > 1 ? { page: String(page) } : {}),
     };
     const merged = { ...base, ...cambios };
     if (!("page" in cambios)) delete (merged as Record<string, string>).page;
@@ -62,11 +72,13 @@ export default async function AsignacionPage({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri, tipo }} />
+          <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri, tipo, plan, turno, modalidad, comp }} />
           {sugeridas > 0 && (
             <form action={confirmarSugeridas.bind(null, {
               plantel: plantel || undefined, cuatri: cuatri || undefined,
               tipo: tipo || undefined, q: qstr || undefined,
+              plan: plan || undefined, turno: turno || undefined,
+              modalidad: modalidad || undefined, comp: comp || undefined,
             })}>
               <ConfirmButton
                 message={`¿Aprobar las ${sugeridas} propuestas que estás viendo (${ambito})? Quedarán como "Aprobada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
@@ -83,7 +95,9 @@ export default async function AsignacionPage({
 
       <AsignacionFiltros
         estado={estado} plantel={plantel} cuatri={cuatri} tipo={tipo} qstr={qstr}
-        planteles={planteles} cuatris={facetas.cuatris} tipos={facetas.tipos} conteo={conteo} />
+        plan={plan} turno={turno} modalidad={modalidad} comp={comp}
+        planteles={planteles} cuatris={facetas.cuatris} tipos={facetas.tipos}
+        carreras={facetas.carreras} turnos={facetas.turnos} modalidades={facetas.modalidades} conteo={conteo} />
 
       <TablaAsignacion rows={rows} parked={estado === "no_apertura"} />
       <div className="flex items-center justify-between gap-3 flex-wrap">

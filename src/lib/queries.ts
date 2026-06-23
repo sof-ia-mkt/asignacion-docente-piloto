@@ -235,7 +235,14 @@ export async function getPropuestaProfesor(id: number) {
   };
 }
 
-export type SlotFiltro = { estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string; page?: number };
+export type SlotFiltro = {
+  estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string;
+  // Filtros adicionales: carrera (nombre del plan), turno (3er segmento de la clave del grupo,
+  // PLAN_Gnn_TURNO_CAMPUS), modalidad (s.modalidad) y compactada ("si"=compactacion_id not null,
+  // "no"=is null). Todos opcionales; "" = sin filtrar.
+  plan?: string; turno?: string; modalidad?: string; comp?: string;
+  page?: number;
+};
 
 // Planteles con materias por asignar (para el selector de la pantalla de asignación).
 export async function getPlanteles() {
@@ -259,11 +266,29 @@ export async function getFacetasSlots(plantel?: string) {
   const tipos = await q<{ v: string }>(
     `select distinct s.tipo v from slots s
       where s.ciclo_id = ${act.id} and not s.no_apertura and s.tipo is not null${scope}`, params);
+  // Carreras (nombre del plan), turnos (3er segmento de la clave del grupo) y modalidades,
+  // también acotadas al plantel elegido para no ofrecer opciones que no devolverían nada.
+  const carreras = await q<{ v: string }>(
+    `select distinct pl.nombre v from slots s
+       join grupos g on g.id = s.grupo_id
+       join planes pl on pl.id = g.plan_id
+      where s.ciclo_id = ${act.id} and not s.no_apertura and pl.nombre is not null${scope}`, params);
+  const turnos = await q<{ v: string }>(
+    `select distinct split_part(g.clave, '_', 3) v from slots s
+       join grupos g on g.id = s.grupo_id
+      where s.ciclo_id = ${act.id} and not s.no_apertura
+        and split_part(g.clave, '_', 3) <> ''${scope}`, params);
+  const modalidades = await q<{ v: string }>(
+    `select distinct s.modalidad v from slots s
+      where s.ciclo_id = ${act.id} and not s.no_apertura and s.modalidad is not null and s.modalidad <> ''${scope}`, params);
   // Orden natural: cuatris por el número inicial (1°, 2°…); tipos alfabético.
   const ordenCuatri = (s: string) => parseInt(s, 10) || 99;
   return {
     cuatris: cuatris.map((r) => r.v).sort((a, b) => ordenCuatri(a) - ordenCuatri(b) || a.localeCompare(b)),
     tipos: tipos.map((r) => r.v).sort((a, b) => a.localeCompare(b)),
+    carreras: carreras.map((r) => r.v).sort((a, b) => a.localeCompare(b)),
+    turnos: turnos.map((r) => r.v).sort((a, b) => a.localeCompare(b)),
+    modalidades: modalidades.map((r) => r.v).sort((a, b) => a.localeCompare(b)),
   };
 }
 
@@ -278,6 +303,11 @@ export async function getConteoPorEstado(f: SlotFiltro) {
   if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
   if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
+  if (f.plan) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = $${params.length})`); }
+  if (f.turno) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = $${params.length}`); }
+  if (f.modalidad) { params.push(f.modalidad); where.push(`s.modalidad = $${params.length}`); }
+  if (f.comp === "si") where.push("s.compactacion_id is not null");
+  else if (f.comp === "no") where.push("s.compactacion_id is null");
   // Los conteos de trabajo (total/sin/con/rev) excluyen las clases parqueadas (no_apertura);
   // 'parked' las cuenta aparte para la pestaña "No se abren".
   // Las tres cubetas de trabajo son DISJUNTAS y suman 'total':
@@ -306,6 +336,11 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 25) {
   if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
   if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
+  if (f.plan) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = $${params.length})`); }
+  if (f.turno) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = $${params.length}`); }
+  if (f.modalidad) { params.push(f.modalidad); where.push(`s.modalidad = $${params.length}`); }
+  if (f.comp === "si") where.push("s.compactacion_id is not null");
+  else if (f.comp === "no") where.push("s.compactacion_id is null");
   if (f.estado === "asignado") where.push("a.profesor_id is not null and a.estado <> 'sugerida'");
   if (f.estado === "sin_asignar") where.push("a.profesor_id is null");
   if (f.estado === "por_revisar") where.push("a.profesor_id is not null and a.estado = 'sugerida'");
@@ -357,6 +392,11 @@ export async function contarSugeridas(f: SlotFiltro = {}) {
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
   if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
+  if (f.plan) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = $${params.length})`); }
+  if (f.turno) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = $${params.length}`); }
+  if (f.modalidad) { params.push(f.modalidad); where.push(`s.modalidad = $${params.length}`); }
+  if (f.comp === "si") where.push("s.compactacion_id is not null");
+  else if (f.comp === "no") where.push("s.compactacion_id is null");
   if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   const [r] = await q<{ n: number }>(
     `select count(*)::int n

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { plantelCorto, tipoLabel } from "@/lib/ui";
+import { plantelCorto, planCorto, tipoLabel } from "@/lib/ui";
 
 type Conteo = { total: number; sin: number; con: number; rev: number; parked: number };
 
@@ -15,11 +15,14 @@ type Conteo = { total: number; sin: number; con: number; rev: number; parked: nu
 // Toda la navegación se hace por URL (searchParams) para que sea compartible y
 // que el server vuelva a consultar. Cambiar cualquier filtro reinicia a la página 1.
 export function AsignacionFiltros({
-  estado, plantel, cuatri, tipo, qstr, planteles, cuatris, tipos, conteo,
+  estado, plantel, cuatri, tipo, qstr, plan, turno, modalidad, comp,
+  planteles, cuatris, tipos, carreras, turnos, modalidades, conteo,
 }: {
   estado: string; plantel: string; cuatri: string; tipo: string; qstr: string;
+  plan: string; turno: string; modalidad: string; comp: string;
   planteles: { plantel: string; n: number }[];
-  cuatris: string[]; tipos: string[]; conteo: Conteo;
+  cuatris: string[]; tipos: string[]; carreras: string[]; turnos: string[]; modalidades: string[];
+  conteo: Conteo;
 }) {
   const router = useRouter();
   const [q, setQ] = useState(qstr);
@@ -39,6 +42,10 @@ export function AsignacionFiltros({
     if (plantel) cur.plantel = plantel;
     if (cuatri) cur.cuatri = cuatri;
     if (tipo) cur.tipo = tipo;
+    if (plan) cur.plan = plan;
+    if (turno) cur.turno = turno;
+    if (modalidad) cur.modalidad = modalidad;
+    if (comp) cur.comp = comp;
     if (qstr) cur.q = qstr;
     const merged = { ...cur, ...cambios };
     const limpio = Object.fromEntries(Object.entries(merged).filter(([, v]) => v));
@@ -65,6 +72,10 @@ export function AsignacionFiltros({
   if (plantel) pills.push({ label: plantelCorto(plantel), clear: { plantel: "" } });
   if (cuatri) pills.push({ label: `Cuatri ${cuatri}`, clear: { cuatri: "" } });
   if (tipo) pills.push({ label: tipoLabel(tipo), clear: { tipo: "" } });
+  if (plan) pills.push({ label: planCorto(plan), clear: { plan: "" } });
+  if (turno) pills.push({ label: `Turno ${turno}`, clear: { turno: "" } });
+  if (modalidad) pills.push({ label: modalidad, clear: { modalidad: "" } });
+  if (comp) pills.push({ label: comp === "si" ? "Compactadas" : "Sin compactar", clear: { comp: "" } });
   if (qstr) pills.push({ label: `"${qstr}"`, clear: { q: "" } });
 
   return (
@@ -106,6 +117,33 @@ export function AsignacionFiltros({
           <option value="">Todos los tipos</option>
           {tipos.map((t) => <option key={t} value={t}>{tipoLabel(t)}</option>)}
         </select>
+
+        {carreras.length > 0 && (
+          <select value={plan} onChange={(e) => go({ plan: e.target.value })} className={sel} aria-label="Carrera">
+            <option value="">Todas las carreras</option>
+            {carreras.map((c) => <option key={c} value={c}>{planCorto(c)}</option>)}
+          </select>
+        )}
+
+        {turnos.length > 0 && (
+          <select value={turno} onChange={(e) => go({ turno: e.target.value })} className={sel} aria-label="Turno">
+            <option value="">Todos los turnos</option>
+            {turnos.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        )}
+
+        {modalidades.length > 0 && (
+          <select value={modalidad} onChange={(e) => go({ modalidad: e.target.value })} className={sel} aria-label="Modalidad">
+            <option value="">Todas las modalidades</option>
+            {modalidades.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        )}
+
+        <select value={comp} onChange={(e) => go({ comp: e.target.value })} className={sel} aria-label="Compactación">
+          <option value="">Compactadas y normales</option>
+          <option value="si">Solo compactadas</option>
+          <option value="no">Sin compactar</option>
+        </select>
       </div>
 
       {/* Filtros activos: pastillas quitables */}
@@ -120,7 +158,7 @@ export function AsignacionFiltros({
             </button>
           ))}
           {pills.length > 1 && (
-            <button type="button" onClick={() => go({ plantel: "", cuatri: "", tipo: "", q: "" })}
+            <button type="button" onClick={() => go({ plantel: "", cuatri: "", tipo: "", plan: "", turno: "", modalidad: "", comp: "", q: "" })}
               className="text-xs text-blue-700 hover:underline ml-1">Limpiar todo</button>
           )}
         </div>
