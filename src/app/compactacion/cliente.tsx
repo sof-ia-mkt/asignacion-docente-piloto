@@ -414,7 +414,7 @@ export function CompactacionCliente({
       {/* ---------- Barra flotante + panel de confirmación ---------- */}
       {sel.size > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-slate-200 bg-white shadow-lg">
-          <div className="mx-auto max-w-6xl px-4 py-3 max-h-[80vh] overflow-y-auto">
+          <div className="mx-auto max-w-[1440px] px-4 sm:px-6 py-3 max-h-[80vh] overflow-y-auto">
             {error && <div className="mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>}
 
             {!panelAbierto ? (

@@ -57,7 +57,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
         <header className="bg-slate-900 text-white">
-          <div className="mx-auto max-w-6xl px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
+          <div className="mx-auto max-w-[1440px] px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
             <Link href="/" className="font-semibold tracking-tight shrink-0">
               Asignación Docente
               <span className="ml-2 text-xs font-normal text-slate-400">Coordinación Académica</span>
@@ -88,9 +88,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             </div>
           </div>
         </header>
-        <main className="flex-1 mx-auto w-full max-w-6xl px-4 py-6">{children}</main>
+        <main className="flex-1 mx-auto w-full max-w-[1440px] px-4 sm:px-6 py-6">{children}</main>
         <footer className="border-t border-slate-200 text-xs text-slate-500">
-          <div className="mx-auto max-w-6xl px-4 py-3">
+          <div className="mx-auto max-w-[1440px] px-4 sm:px-6 py-3">
             El cuatrimestre a asignar se arma desde el historial de ciclos anteriores + CV. Sugerencias automáticas, decisión final de coordinación.
           </div>
         </footer>
