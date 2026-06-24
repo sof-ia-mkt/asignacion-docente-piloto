@@ -90,10 +90,11 @@ export async function getProfesor(id: number) {
   const [prof] = await q<{
     id: number; nombre: string; licenciatura: string | null; maestria: string | null;
     doctorado: string | null; area_cv: string | null; anios_experiencia: number | null; cv_archivo: string | null;
+    cv_path: string | null;
     coordinador: string | null; correo: string | null; payload: Record<string, unknown> | null; modelo: string | null;
     propuesta_estado: string; propuesta_enviada_en: string | null; propuesta_confirmada_en: string | null;
   }>(
-    `select p.id, p.nombre, p.licenciatura, p.maestria, p.doctorado, p.area_cv, p.anios_experiencia, p.cv_archivo,
+    `select p.id, p.nombre, p.licenciatura, p.maestria, p.doctorado, p.area_cv, p.anios_experiencia, p.cv_archivo, p.cv_path,
             p.coordinador, p.correo, p.propuesta_estado, p.propuesta_enviada_en, p.propuesta_confirmada_en, c.payload, c.modelo
        from profesores p left join cv_competencias c on c.profesor_id = p.id
       where p.id = $1`, [id]);

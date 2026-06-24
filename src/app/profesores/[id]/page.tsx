@@ -175,7 +175,19 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
           <div><dt className="text-slate-500">Doctorado</dt><dd className="text-slate-800">{prof.doctorado ?? "—"}</dd></div>
         </dl>
         {prof.cv_archivo ? (
-          <p className="mt-3 text-xs text-slate-400">CV leído: {prof.cv_archivo} · por {prof.modelo ?? "—"}</p>
+          <p className="mt-3 text-xs text-slate-400 flex items-center gap-2">
+            <span>CV leído: {prof.cv_archivo} · por {prof.modelo ?? "—"}</span>
+            {prof.cv_path && (
+              <a
+                href={`/profesores/${prof.id}/cv`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
+              >
+                Ver CV (PDF)
+              </a>
+            )}
+          </p>
         ) : (
           <p className="mt-3 text-xs text-slate-400">Sin CV cargado — solo se conoce por su historial de clases.</p>
         )}
