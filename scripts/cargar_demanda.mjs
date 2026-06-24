@@ -42,6 +42,36 @@ const PLAN_CANON = {
   "PSICOLOGÍA ORGANIZACIONAL": "LICENCIATURA EN PSICOLOGÍA ORGANIZACIONAL",
 };
 
+// Alias de variantes SUCIAS conocidas del Excel (slug -> llave de PLAN_CANON). Estas
+// son las que históricamente crearon planes duplicados ("INGENERIA…" sin la 2ª i, etc.).
+const PLAN_ALIAS = {
+  "ingeneria-electromecanica": "INGENIERÍA ELECTROMECÁNICA",
+  "ingeneria-industrial": "INGENIERÍA INDUSTRIAL",
+  "ingeneria-mecatronica": "INGENIERÍA MECATRÓNICA",
+  "ingeneria-sistemas-computacionale-s": "INGENIERÍA EN SISTEMAS COMPUTACIONALES",
+  "ingeneria-sistemas-computacionales": "INGENIERÍA EN SISTEMAS COMPUTACIONALES",
+  "ingenieria-sistemas-computacionales": "INGENIERÍA EN SISTEMAS COMPUTACIONALES",
+  "administracion-de-empresas": "ADMINISTRACIÓN",
+};
+
+// Índice de las llaves canónicas por slug (tolera acentos/mayúsculas/espacios).
+const planKeyBySlug = new Map(Object.keys(PLAN_CANON).map((k) => [slugify(k), k]));
+
+// Carreras que no resolvimos a ningún plan canónico: se reportan y BLOQUEAN el --confirmar
+// (nunca insertamos un plan sucio en silencio; un humano debe agregar el alias).
+const carrerasDesconocidas = new Set();
+
+// carrera (cruda del Excel) -> nombre canónico de plan. Orden: exacto -> slug -> alias typo.
+function planCanonico(carrera) {
+  const n = norm(carrera);
+  if (PLAN_CANON[n]) return PLAN_CANON[n];
+  const sl = slugify(n);
+  if (planKeyBySlug.has(sl)) return PLAN_CANON[planKeyBySlug.get(sl)];
+  if (PLAN_ALIAS[sl]) return PLAN_CANON[PLAN_ALIAS[sl]];
+  carrerasDesconocidas.add(n);
+  return `LICENCIATURA EN ${n}`; // último recurso; el --confirmar abortará por estar en la lista
+}
+
 const dem = JSON.parse(readFileSync(DEMANDA, "utf8"));
 const aliasMap = JSON.parse(readFileSync(ALIAS, "utf8")).alias ?? {};
 const slots = dem.slots;
@@ -73,7 +103,7 @@ try {
   // --- qué planes / grupos nuevos hacen falta ---
   const planesNecesarios = new Map();  // slug -> nombre canónico
   for (const s of slots) {
-    const nombre = PLAN_CANON[s.carrera] ?? `LICENCIATURA EN ${norm(s.carrera)}`;
+    const nombre = planCanonico(s.carrera);
     planesNecesarios.set(slugify(nombre), nombre);
   }
   const planesNuevos = [...planesNecesarios].filter(([sl]) => !planBySlug.has(sl));
@@ -81,7 +111,7 @@ try {
   const gruposDemanda = new Map();     // clave -> {cuatri, turno, planSlug}
   for (const s of slots) {
     if (gruposDemanda.has(s.clave_grupo)) continue;
-    const nombre = PLAN_CANON[s.carrera] ?? `LICENCIATURA EN ${norm(s.carrera)}`;
+    const nombre = planCanonico(s.carrera);
     gruposDemanda.set(s.clave_grupo, {
       cuatrimestre: s.cuatrimestre || null, turno: s.turno || null, planSlug: slugify(nombre),
     });
@@ -119,9 +149,22 @@ try {
   console.log(`\n● A BORRAR del ciclo: ${borraSlots} slots placeholder` +
     (borraAsig ? ` y ${borraAsig} asignaciones (incluye las de prueba)` : ""));
 
+  // Carreras que no resolvieron a un plan canónico: bloquean la carga para no
+  // reintroducir planes duplicados/sucios. Hay que agregarlas a PLAN_CANON o PLAN_ALIAS.
+  if (carrerasDesconocidas.size) {
+    console.log(`\n‼️ CARRERAS DESCONOCIDAS (${carrerasDesconocidas.size}) — no casan con PLAN_CANON ni PLAN_ALIAS:`);
+    for (const n of [...carrerasDesconocidas].sort())
+      console.log(`     · "${n}"  (slug: ${slugify(n)})`);
+    console.log("   → Agrega cada una a PLAN_ALIAS (si es typo) o a PLAN_CANON (si es carrera nueva).");
+  }
+
   if (!CONFIRMAR) {
     console.log("\n🧪 VISTA PREVIA: no se tocó la base. Para aplicar: --confirmar");
     process.exit(0);
+  }
+  if (carrerasDesconocidas.size) {
+    throw new Error(`Carga abortada: ${carrerasDesconocidas.size} carrera(s) sin mapear. ` +
+      "Agrega los alias antes de --confirmar (ver lista arriba).");
   }
 
   // --- APLICAR (una transacción) ---
@@ -156,7 +199,7 @@ try {
     const lote = slots.slice(i, i + CHUNK);
     const vals = []; const ph = [];
     lote.forEach((s, j) => {
-      const nombrePlan = PLAN_CANON[s.carrera] ?? `LICENCIATURA EN ${norm(s.carrera)}`;
+      const nombrePlan = planCanonico(s.carrera);
       const fila = [
         s.plantel || "CASA BLANCA", CICLO.codigo, CICLO.id, false,
         planBySlug.get(slugify(nombrePlan)) ?? null,
