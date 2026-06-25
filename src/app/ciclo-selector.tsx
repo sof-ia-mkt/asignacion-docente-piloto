@@ -14,6 +14,11 @@ export function CicloSelector({ ciclos, activo }: { ciclos: CicloOpt[]; activo: 
     <form action={seleccionarCiclo} ref={formRef} className="ml-auto flex items-center gap-2">
       <span className="text-xs text-slate-400">Ciclo:</span>
       <select
+        // key={activo}: cuando la server action cambia el ciclo activo y revalida el layout,
+        // el select se REMONTA con el nuevo valor. Sin esto, al ser no controlado (defaultValue
+        // solo aplica al montar) el dropdown se regresaba solo al ciclo anterior y parecía
+        // que "no dejaba cambiar", aunque la cookie y los datos sí cambiaban.
+        key={activo}
         name="ciclo"
         defaultValue={activo}
         onChange={() => formRef.current?.requestSubmit()}
