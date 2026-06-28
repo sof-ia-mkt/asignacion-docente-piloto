@@ -22,7 +22,7 @@ export default async function SlotPage({
   if (!data) notFound();
   const { slot, candidatos, aulas } = data;
   const manuales = await buscarProfesores(
-    buscar, slot.materia_id, slotId, slot.dia, slot.hora_inicio, slot.hora_fin);
+    buscar, slot.materia_id, slotId, slot.dia, slot.hora_inicio, slot.hora_fin, slot.tipo);
   const esPresencial = (slot.modalidad ?? "").toUpperCase() === "PRESENCIAL";
   const aulaChica = slot.aula_capacidad != null && slot.alumnos != null && slot.aula_capacidad < slot.alumnos;
   // Sin día/hora no podemos evaluar choques de horario del docente (no hay con qué comparar).

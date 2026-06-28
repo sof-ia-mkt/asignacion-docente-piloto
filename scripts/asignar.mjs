@@ -12,7 +12,7 @@
 // coordinación decida.
 import pg from "pg";
 import { loadEnv } from "./_env.mjs";
-import { recomputarAlertas } from "../src/lib/alertas-core.mjs";
+import { recomputarAlertas, mismoPeriodo } from "../src/lib/alertas-core.mjs";
 
 const env = loadEnv();
 const SCORE_MIN = 25;          // umbral opción A (historial 40, cv-alta 25)
@@ -49,8 +49,11 @@ const SQL_HIST = `s.ciclo_id in (${histIds.length ? histIds.join(",") : "-1"})`;
 console.log(`Asignando ciclo ${planeacion.codigo} (id ${CICLO_ID}); historial: [${histIds.join(",") || "ninguno"}]`);
 
 const toMin = (h) => { if (!h) return null; const [a, b] = h.split(":").map(Number); return a * 60 + b; };
+// Choque real sólo si comparten día/hora Y periodo: los MÓDULO 1/2/3 corren en semanas distintas
+// del cuatrimestre, así que dos módulos distintos no se estorban aunque coincidan día y hora.
 const overlap = (a, b) =>
-  a.dia && b.dia && a.dia === b.dia && a.ini != null && b.ini != null && a.ini < b.fin && b.ini < a.fin;
+  a.dia && b.dia && a.dia === b.dia && a.ini != null && b.ini != null && a.ini < b.fin && b.ini < a.fin &&
+  mismoPeriodo(a.tipo, b.tipo);
 
 // ---- candidatos fuertes por materia (combina historial + cv-alta del mismo profe) ----
 const cand = (await db.query(
@@ -142,7 +145,7 @@ for (const r of manualRows) {
   if (visto.has(uk)) continue;   // otra parte de una clase compactada ya sembrada
   visto.add(uk);
   if (!horario.has(r.profesor_id)) horario.set(r.profesor_id, []);
-  horario.get(r.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin });
+  horario.get(r.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin, tipo: s.tipo });
   carga.set(r.profesor_id, (carga.get(r.profesor_id) || 0) + 1);
   manualAsignados.push({ slot: s, profesor_id: r.profesor_id });
 }
@@ -195,7 +198,7 @@ for (const s of slots) {
 
   // Carga y horario se cuentan UNA sola vez por clase (no por miembro).
   if (!horario.has(elegido.profesor_id)) horario.set(elegido.profesor_id, []);
-  horario.get(elegido.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin });
+  horario.get(elegido.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin, tipo: s.tipo });
   carga.set(elegido.profesor_id, (carga.get(elegido.profesor_id) || 0) + 1);
   // ...pero el docente elegido se escribe en TODOS los slots miembros (la clase no se parte).
   for (const mm of miembros)
@@ -226,7 +229,7 @@ let sinAula = 0;
 for (const s of slots) {
   if (s.aula_manual && s.aula_id) {
     if (!aulaOcc.has(s.aula_id)) aulaOcc.set(s.aula_id, []);
-    aulaOcc.get(s.aula_id).push({ dia: s.dia, ini: s.ini, fin: s.fin });
+    aulaOcc.get(s.aula_id).push({ dia: s.dia, ini: s.ini, fin: s.fin, tipo: s.tipo });
   }
 }
 
@@ -257,7 +260,7 @@ for (const miembros of presenciales) {
   const libre = caben.find((a) => !(aulaOcc.get(a.id) || []).some((o) => overlap(o, s)));
   if (libre) {
     if (!aulaOcc.has(libre.id)) aulaOcc.set(libre.id, []);
-    aulaOcc.get(libre.id).push({ dia: s.dia, ini: s.ini, fin: s.fin });
+    aulaOcc.get(libre.id).push({ dia: s.dia, ini: s.ini, fin: s.fin, tipo: s.tipo });
     for (const mm of miembros) aulaDe.set(mm.id, libre.id);   // mismo salón para toda la clase
   } else {
     sinAula++;   // solo para el resumen; la alerta sin_aula la levanta el módulo compartido

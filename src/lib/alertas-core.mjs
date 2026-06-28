@@ -14,10 +14,19 @@ const PLACEHOLDERS = ["CAMBIO DE TURNO", "DOCENTE NUEVO", "NO SE APERTURA", "NOS
 
 const toMin = (h) => { if (!h) return null; const [a, b] = String(h).split(":").map(Number); return a * 60 + b; };
 const nombreCorto = (n) => (n ?? "").toLowerCase().replace(/(^|\s)(\p{L})/gu, (_, sep, ch) => sep + ch.toUpperCase());
+
+// MÓDULO 1/2/3 son periodos SECUENCIALES del cuatrimestre (módulo 1 = primeras semanas, módulo 2
+// = las siguientes, etc.): dos clases en módulos distintos NUNCA coinciden en el calendario aunque
+// compartan día y hora, así que no son choque. DISCIPLINAR abarca todo el cuatrimestre, por eso sí
+// coincide con cualquier módulo. (VIRTUAL no tiene día/hora, queda fuera por la comparación nula.)
+export const moduloDe = (tipo) => { const m = /M[OÓ]DULO\s*(\d+)/i.exec(tipo ?? ""); return m ? m[1] : null; };
+export const mismoPeriodo = (ta, tb) => { const a = moduloDe(ta), b = moduloDe(tb); return !(a && b && a !== b); };
+
 const overlap = (a, b) =>
   a.dia && b.dia && a.dia === b.dia &&
   a.ini != null && b.ini != null && a.fin != null && b.fin != null &&
-  a.ini < b.fin && b.ini < a.fin;
+  a.ini < b.fin && b.ini < a.fin &&
+  mismoPeriodo(a.tipo, b.tipo);
 
 // Devuelve el arreglo de alertas calculado desde el estado actual. NO escribe.
 // `cicloId` = el ciclo que se está asignando (las alertas son sobre ESE ciclo).
@@ -40,7 +49,7 @@ export async function calcularAlertas(query, cicloId) {
   // (un docente, un aula, un horario), aunque sean de carreras/grupos distintos.
   const rows = await query(
     `select s.id, s.materia_id, s.grupo_id, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.modalidad, s.aula_id,
-            s.compactacion_id,
+            s.compactacion_id, s.tipo,
             m.nombre materia, g.clave grupo, g.alumnos, a.profesor_id
        from slots s
        left join materias m on m.id = s.materia_id
@@ -67,7 +76,7 @@ export async function calcularAlertas(query, cicloId) {
     if (visto.has(uk)) continue;   // esta clase compactada ya se contó para este docente
     visto.add(uk);
     if (!horario.has(s.profesor_id)) horario.set(s.profesor_id, []);
-    horario.get(s.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin, materia: s.materia, plantel: s.plantel, grupo_id: s.grupo_id });
+    horario.get(s.profesor_id).push({ slot_id: s.id, dia: s.dia, ini: s.ini, fin: s.fin, tipo: s.tipo, materia: s.materia, plantel: s.plantel, grupo_id: s.grupo_id });
     carga.set(s.profesor_id, (carga.get(s.profesor_id) || 0) + 1);
   }
 
@@ -219,38 +228,38 @@ export async function calcularAlertas(query, cicloId) {
     // Sólo clases con horario COMPLETO pueden chocar: las que no tienen día/hora se reportan
     // como "sin_aula" o quedan fuera; compararlas aquí generaba miles de choques fantasma.
     const conHorario = lista.filter((s) => s.dia && Number.isFinite(s.ini) && Number.isFinite(s.fin));
-    // Agrupamos por día y barremos por hora de inicio formando RACIMOS de clases que se
-    // enciman en cadena. Emitimos UNA alerta por racimo (no un par por cada combinación):
-    // un salón con N clases encimadas era N·(N-1)/2 alertas; ahora es 1.
+    // Agrupamos por día y armamos el grafo de choques: hay arista si dos clases se enciman en
+    // hora Y comparten periodo (los módulos 1/2/3 corren en semanas distintas, así que dos
+    // módulos distintos pueden compartir salón, día y hora sin estorbarse). Emitimos UNA alerta
+    // por componente conexa, no un par por cada combinación.
     const porDia = new Map();   // dia -> [slot]
     for (const s of conHorario) {
       if (!porDia.has(s.dia)) porDia.set(s.dia, []);
       porDia.get(s.dia).push(s);
     }
     for (const [dia, clases] of porDia) {
-      clases.sort((a, b) => a.ini - b.ini);
-      let i = 0;
-      while (i < clases.length) {
-        // El racimo arranca en i y se extiende mientras la siguiente clase empiece antes
-        // de que termine la última hora cubierta por el racimo.
-        let maxFin = clases[i].fin;
-        let j = i + 1;
-        while (j < clases.length && clases[j].ini < maxFin) {
-          if (clases[j].fin > maxFin) maxFin = clases[j].fin;
-          j++;
+      const n = clases.length;
+      const ady = Array.from({ length: n }, () => []);
+      for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) {
+        if (clases[a].ini < clases[b].fin && clases[b].ini < clases[a].fin && mismoPeriodo(clases[a].tipo, clases[b].tipo)) {
+          ady[a].push(b); ady[b].push(a);
         }
-        const grupo = clases.slice(i, j);
-        if (grupo.length >= 2) {
-          const a = grupo[0], b = grupo[1];
-          const clave = claveAula.get(aulaId) ?? "?";
-          const detalle = grupo.length === 2
-            ? `El salón ${clave} tiene dos clases encimadas el ${dia}: "${a.materia}" (${a.grupo ?? "?"}) y "${b.materia}" (${b.grupo ?? "?"}) a la misma hora. Cambia de aula o de horario una de las dos.`
-            : `El salón ${clave} está sobreasignado el ${dia}: ${grupo.length} clases se enciman en el mismo horario (p. ej. "${a.materia}" y "${b.materia}"). Reparte estas clases en otros salones u horarios.`;
-          alertas.push({
-            tipo: "choque_aula", severidad: "alta", slot_id: a.id, slot_id_2: b.id, profesor_id: null, detalle,
-          });
-        }
-        i = j > i + 1 ? j : i + 1;
+      }
+      const visto = new Array(n).fill(false);
+      for (let raiz = 0; raiz < n; raiz++) {
+        if (visto[raiz]) continue;
+        const comp = []; const pila = [raiz]; visto[raiz] = true;
+        while (pila.length) { const u = pila.pop(); comp.push(clases[u]); for (const v of ady[u]) if (!visto[v]) { visto[v] = true; pila.push(v); } }
+        if (comp.length < 2) continue;
+        comp.sort((x, y) => x.ini - y.ini);
+        const a = comp[0], b = comp[1];
+        const clave = claveAula.get(aulaId) ?? "?";
+        const detalle = comp.length === 2
+          ? `El salón ${clave} tiene dos clases encimadas el ${dia}: "${a.materia}" (${a.grupo ?? "?"}) y "${b.materia}" (${b.grupo ?? "?"}) a la misma hora. Cambia de aula o de horario una de las dos.`
+          : `El salón ${clave} está sobreasignado el ${dia}: ${comp.length} clases se enciman en el mismo horario (p. ej. "${a.materia}" y "${b.materia}"). Reparte estas clases en otros salones u horarios.`;
+        alertas.push({
+          tipo: "choque_aula", severidad: "alta", slot_id: a.id, slot_id_2: b.id, profesor_id: null, detalle,
+        });
       }
     }
   }

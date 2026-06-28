@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { q, pool } from "@/lib/db";
+import { sqlMismoPeriodo } from "@/lib/queries";
 import { cicloActivo, getCiclos } from "@/lib/ciclo";
 import { leerCV } from "@/lib/cv";
 import { nombresCoordinadores } from "@/lib/usuarios-db";
@@ -191,8 +192,8 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
 export async function asignar(slotId: number, profesorId: number, puntaje?: number, razon?: string) {
   await exigirSesionActiva();
   const act = await cicloActivo();
-  const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null; compactacion_id: number | null }>(
-    `select modalidad, dia, hora_inicio, hora_fin, compactacion_id from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
+  const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null; compactacion_id: number | null; tipo: string | null }>(
+    `select modalidad, dia, hora_inicio, hora_fin, compactacion_id, tipo from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
   if (!s) throw new Error("La clase no existe o no es del cuatrimestre a asignar.");
   const asincronica = (s.modalidad ?? "").toUpperCase().includes("ASINCR");
   const sinHorario = !s.dia || !s.hora_inicio || !s.hora_fin;
@@ -213,8 +214,9 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
          left join grupos g2 on g2.id = s2.grupo_id
         where a2.profesor_id = $1 and s2.ciclo_id = ${act.id} and s2.id <> all($2)
           and s2.dia = $3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+          and ${sqlMismoPeriodo("$6", "s2.tipo")}
         order by s2.hora_inicio limit 1`,
-      [profesorId, objetivos, s.dia, s.hora_inicio, s.hora_fin]);
+      [profesorId, objetivos, s.dia, s.hora_inicio, s.hora_fin, s.tipo]);
     if (choque)
       throw new Error(`Ese docente ya da "${choque.mat}" a esa misma hora. No se puede empalmar: primero libéralo de esa clase o cambia el horario de alguna de las dos.`);
   }
@@ -1128,8 +1130,9 @@ export async function compactar(
          left join grupos g2 on g2.id=s2.grupo_id
         where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
           and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+          and ${sqlMismoPeriodo("$6", "s2.tipo")}
         order by s2.hora_inicio limit 1`,
-      [docenteId, ids, efDia, efHi, efHf]);
+      [docenteId, ids, efDia, efHi, efHf, filas[0].tipo]);
     if (choque) return { ok: false, error: `El docente elegido ya da "${choque.mat}" a esa hora: no se puede asignar a la clase compactada sin empalmarlo.` };
   }
 
@@ -1379,8 +1382,9 @@ export async function agregarACompactacion(
          left join grupos g2 on g2.id=s2.grupo_id
         where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
           and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+          and ${sqlMismoPeriodo("$6", "s2.tipo")}
         order by s2.hora_inicio limit 1`,
-      [docenteClase, excluir, efDia, efHi, efHf]);
+      [docenteClase, excluir, efDia, efHi, efHf, base.tipo]);
     if (choque) return { ok: false, error: `El docente de la clase ya da "${choque.mat}" a esa hora: no se puede agregar este grupo sin empalmarlo.` };
   }
 
@@ -1449,8 +1453,8 @@ export async function homogeneizarHorarioCompactacion(
   const hf = limpiarHora(horario.hora_fin ?? "");
   if (!dia || !hi || !hf) return { ok: false, error: "El horario elegido no es válido (día y hora inicio–fin en formato HH:MM)." };
 
-  const miembros = await q<{ id: number; profesor_id: number | null }>(
-    `select s.id, a.profesor_id from slots s left join asignaciones a on a.slot_id=s.id where s.compactacion_id=$1 and s.ciclo_id=${act.id}`,
+  const miembros = await q<{ id: number; profesor_id: number | null; tipo: string | null }>(
+    `select s.id, a.profesor_id, s.tipo from slots s left join asignaciones a on a.slot_id=s.id where s.compactacion_id=$1 and s.ciclo_id=${act.id}`,
     [compactacionId]);
   if (miembros.length === 0) return { ok: false, error: "La clase compactada no tiene grupos. Recarga la pantalla." };
   const ids = miembros.map((m) => m.id);
@@ -1465,8 +1469,9 @@ export async function homogeneizarHorarioCompactacion(
          left join grupos g2 on g2.id=s2.grupo_id
         where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
           and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+          and ${sqlMismoPeriodo("$6", "s2.tipo")}
         order by s2.hora_inicio limit 1`,
-      [prof, ids, dia, hi, hf]);
+      [prof, ids, dia, hi, hf, miembros[0].tipo]);
     if (choque) return { ok: false, error: `Un docente de la clase ya da "${choque.mat}" a esa hora: elige otro horario para no empalmarlo.` };
   }
 

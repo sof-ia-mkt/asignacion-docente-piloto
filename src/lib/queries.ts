@@ -4,6 +4,14 @@ import { cicloActivo, ciclosHistorial, sqlEnHistorial } from "./ciclo";
 // "Docentes" del Excel que no son personas (no asignables).
 export const PLACEHOLDERS = ["CAMBIO DE TURNO", "DOCENTE NUEVO", "NO SE APERTURA", "NOSE APERTURA"];
 
+// Predicado SQL para el choque de horario: MÓDULO 1/2/3 son periodos SECUENCIALES del cuatrimestre
+// (módulo 1 = primeras semanas, módulo 2 = las siguientes, etc.), así que dos clases en módulos
+// distintos NUNCA coinciden en el calendario aunque compartan día y hora — no son choque. DISCIPLINAR
+// abarca todo el cuatrimestre, por eso sí choca con cualquier módulo. `a` y `b` son expresiones SQL
+// que devuelven el `tipo` de cada clase (una columna o un placeholder $n).
+export const sqlMismoPeriodo = (a: string, b: string) =>
+  `not (${a} ilike 'MÓDULO%' and ${b} ilike 'MÓDULO%' and ${a} <> ${b})`;
+
 export async function getResumen() {
   const act = await cicloActivo();
   // En un ciclo CERRADO (historial) el docente está en slots.docente_id (lo que ya dio),
@@ -141,6 +149,7 @@ export async function getProfesor(id: number) {
               where a2.profesor_id = $1
                 and s2.ciclo_id = ${act.id} and s2.id <> s.id
                 and s2.dia = s.dia and s2.hora_inicio < s.hora_fin and s.hora_inicio < s2.hora_fin
+                and ${sqlMismoPeriodo("s.tipo", "s2.tipo")}
               order by s2.hora_inicio limit 1) choque
        from slots s
        join materias m on m.id = s.materia_id
@@ -461,12 +470,13 @@ export async function getSlot(id: number) {
               where a2.profesor_id = mc.profesor_id
                 and s2.ciclo_id = ${act.id} and s2.id <> $3
                 and s2.dia = $4 and s2.hora_inicio < $6 and $5 < s2.hora_fin
+                and ${sqlMismoPeriodo("$7", "s2.tipo")}
               order by s2.hora_inicio limit 1) choque
        from materia_candidatos mc join profesores pr on pr.id = mc.profesor_id
       where mc.materia_id = $1 and mc.puntaje >= 25 and pr.nombre <> all($2)
       group by mc.profesor_id, pr.nombre
       order by puntaje desc, pr.nombre limit 8`,
-    [slot.materia_id, PLACEHOLDERS, id, slot.dia, slot.hora_inicio, slot.hora_fin]) : [];
+    [slot.materia_id, PLACEHOLDERS, id, slot.dia, slot.hora_inicio, slot.hora_fin, slot.tipo]) : [];
 
   // Reordena: primero los LIBRES a esa hora (sin choque), luego quien ya dio la materia EN ESTE
   // plantel (fit más natural), luego por puntaje. Un choque no lo descarta —coordinación decide—
@@ -487,13 +497,14 @@ export async function getSlot(id: number) {
                 select 1 from slots s2
                  where s2.ciclo_id = ${act.id} and s2.aula_id = au.id and s2.id <> $1
                    and s2.dia = $2 and s2.hora_inicio < $4 and $3 < s2.hora_fin
+                   and ${sqlMismoPeriodo("$7", "s2.tipo")}
               ) ocupada
          from aulas au
         where au.id = $6                                              -- el salón ya asignado SIEMPRE aparece
            or (au.capacidad is not null and ($5::int is null or au.capacidad >= $5))
         order by (au.id = $6) desc, ocupada asc, (au.tipo = 'Teoría') desc, au.capacidad asc nulls last
         limit 9`,
-      [id, slot.dia, slot.hora_inicio, slot.hora_fin, slot.alumnos, slot.aula_id])
+      [id, slot.dia, slot.hora_inicio, slot.hora_fin, slot.alumnos, slot.aula_id, slot.tipo])
     : [];
   return { slot, candidatos, aulas };
 }
@@ -505,6 +516,7 @@ export async function getSlot(id: number) {
 export async function buscarProfesores(
   texto: string, materiaId: number | null,
   slotId: number, dia: string | null, horaInicio: string | null, horaFin: string | null,
+  tipo: string | null,
 ) {
   const act = await cicloActivo();
   const t = texto.trim();
@@ -528,13 +540,14 @@ export async function buscarProfesores(
               where a2.profesor_id = p.id
                 and s2.ciclo_id = ${act.id} and s2.id <> $5
                 and s2.dia = $6 and s2.hora_inicio < $8 and $7 < s2.hora_fin
+                and ${sqlMismoPeriodo("$9", "s2.tipo")}
               order by s2.hora_inicio limit 1) choque
        from profesores p
       where p.nombre <> all($3)
         and ($1 = '' or p.nombre ilike $4 or coalesce(p.area_cv,'') ilike $4)
       order by p.nombre
       limit 25`,
-    [t, materiaId, PLACEHOLDERS, like, slotId, dia, horaInicio, horaFin]);
+    [t, materiaId, PLACEHOLDERS, like, slotId, dia, horaInicio, horaFin, tipo]);
 }
 
 export async function getMaterias() {
