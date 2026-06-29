@@ -293,7 +293,7 @@ export async function confirmar(slotId: number, profesorId?: number) {
 // (plantel/cuatri/tipo/búsqueda). Así el botón nunca toca clases que el coordinador no está
 // viendo: confirma exactamente lo que tiene en pantalla.
 export async function confirmarSugeridas(
-  filtro: { plantel?: string; cuatri?: string; tipo?: string; q?: string; plan?: string; turno?: string; modalidad?: string; comp?: string } = {},
+  filtro: { plantel?: string; cuatri?: string; tipo?: string[]; q?: string; plan?: string[]; turno?: string[]; modalidad?: string[]; comp?: string } = {},
 ) {
   await exigirSesionActiva();
   const act = await cicloActivo();
@@ -301,10 +301,10 @@ export async function confirmarSugeridas(
   const params: unknown[] = [];
   if (filtro.plantel) { params.push(filtro.plantel); conds.push(`s.plantel = $${params.length}`); }
   if (filtro.cuatri) { params.push(filtro.cuatri); conds.push(`s.cuatrimestre = $${params.length}`); }
-  if (filtro.tipo) { params.push(filtro.tipo); conds.push(`s.tipo = $${params.length}`); }
-  if (filtro.plan) { params.push(filtro.plan); conds.push(`g.plan_id in (select id from planes where nombre = $${params.length})`); }
-  if (filtro.turno) { params.push(filtro.turno); conds.push(`split_part(g.clave, '_', 3) = $${params.length}`); }
-  if (filtro.modalidad) { params.push(filtro.modalidad); conds.push(`s.modalidad = $${params.length}`); }
+  if (filtro.tipo?.length) { params.push(filtro.tipo); conds.push(`s.tipo = ANY($${params.length})`); }
+  if (filtro.plan?.length) { params.push(filtro.plan); conds.push(`g.plan_id in (select id from planes where nombre = ANY($${params.length}))`); }
+  if (filtro.turno?.length) { params.push(filtro.turno); conds.push(`split_part(g.clave, '_', 3) = ANY($${params.length})`); }
+  if (filtro.modalidad?.length) { params.push(filtro.modalidad); conds.push(`s.modalidad = ANY($${params.length})`); }
   if (filtro.comp === "si") conds.push("s.compactacion_id is not null");
   else if (filtro.comp === "no") conds.push("s.compactacion_id is null");
   if (filtro.q) { params.push(`%${filtro.q}%`); conds.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
@@ -317,8 +317,11 @@ export async function confirmarSugeridas(
       where estado = 'sugerida' and profesor_id is not null and slot_id in (${sub}) returning slot_id`, params);
   if (upd.length) {
     const filtrosTxt = [
-      filtro.plantel, filtro.cuatri && `cuatri ${filtro.cuatri}`, filtro.tipo,
-      filtro.plan, filtro.turno && `turno ${filtro.turno}`, filtro.modalidad,
+      filtro.plantel, filtro.cuatri && `cuatri ${filtro.cuatri}`,
+      filtro.tipo?.length && filtro.tipo.join("/"),
+      filtro.plan?.length && filtro.plan.join("/"),
+      filtro.turno?.length && `turno ${filtro.turno.join("/")}`,
+      filtro.modalidad?.length && filtro.modalidad.join("/"),
       filtro.comp === "si" ? "compactadas" : filtro.comp === "no" ? "sin compactar" : "",
       filtro.q && `"${filtro.q}"`,
     ].filter(Boolean).join(", ");

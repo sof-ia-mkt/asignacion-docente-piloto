@@ -16,10 +16,13 @@ export default async function AsignacionPage({
   const qstr = sp.q ?? "";
   const plantel = sp.plantel ?? "";
   const cuatri = sp.cuatri ?? "";
-  const tipo = sp.tipo ?? "";
-  const plan = sp.plan ?? "";
-  const turno = sp.turno ?? "";
-  const modalidad = sp.modalidad ?? "";
+  // Filtros multi-valor: vienen en la URL como lista separada por comas (los valores no
+  // contienen comas). [] = sin filtrar. Carrera/Turno/Tipo/Modalidad son de selección múltiple.
+  const parseMulti = (v?: string) => (v ? v.split(",").filter(Boolean) : []);
+  const tipo = parseMulti(sp.tipo);
+  const plan = parseMulti(sp.plan);
+  const turno = parseMulti(sp.turno);
+  const modalidad = parseMulti(sp.modalidad);
   const comp = sp.comp ?? "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const [{ rows, total, pages, limit }, planteles, sugeridas, facetas, conteo, act] = await Promise.all([
@@ -35,10 +38,10 @@ export default async function AsignacionPage({
   const partesAmbito = [
     plantel ? plantelCorto(plantel) : null,
     cuatri ? `cuatri ${cuatri}` : null,
-    tipo ? tipo : null,
-    plan ? plan : null,
-    turno ? `turno ${turno}` : null,
-    modalidad ? modalidad : null,
+    tipo.length ? tipo.join("/") : null,
+    plan.length ? plan.join("/") : null,
+    turno.length ? `turno ${turno.join("/")}` : null,
+    modalidad.length ? modalidad.join("/") : null,
     comp === "si" ? "compactadas" : comp === "no" ? "sin compactar" : null,
     qstr ? `"${qstr}"` : null,
   ].filter(Boolean);
@@ -49,8 +52,9 @@ export default async function AsignacionPage({
   const href = (cambios: Record<string, string>) => {
     const base = {
       ...(estado ? { estado } : {}), ...(qstr ? { q: qstr } : {}), ...(plantel ? { plantel } : {}),
-      ...(cuatri ? { cuatri } : {}), ...(tipo ? { tipo } : {}),
-      ...(plan ? { plan } : {}), ...(turno ? { turno } : {}), ...(modalidad ? { modalidad } : {}), ...(comp ? { comp } : {}),
+      ...(cuatri ? { cuatri } : {}), ...(tipo.length ? { tipo: tipo.join(",") } : {}),
+      ...(plan.length ? { plan: plan.join(",") } : {}), ...(turno.length ? { turno: turno.join(",") } : {}),
+      ...(modalidad.length ? { modalidad: modalidad.join(",") } : {}), ...(comp ? { comp } : {}),
       ...(page > 1 ? { page: String(page) } : {}),
     };
     const merged = { ...base, ...cambios };
@@ -72,13 +76,14 @@ export default async function AsignacionPage({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri, tipo, plan, turno, modalidad, comp }} />
+          <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri,
+            tipo: tipo.join(","), plan: plan.join(","), turno: turno.join(","), modalidad: modalidad.join(","), comp }} />
           {sugeridas > 0 && (
             <form action={confirmarSugeridas.bind(null, {
               plantel: plantel || undefined, cuatri: cuatri || undefined,
-              tipo: tipo || undefined, q: qstr || undefined,
-              plan: plan || undefined, turno: turno || undefined,
-              modalidad: modalidad || undefined, comp: comp || undefined,
+              tipo: tipo.length ? tipo : undefined, q: qstr || undefined,
+              plan: plan.length ? plan : undefined, turno: turno.length ? turno : undefined,
+              modalidad: modalidad.length ? modalidad : undefined, comp: comp || undefined,
             })}>
               <ConfirmButton
                 message={`¿Aprobar las ${sugeridas} propuestas que estás viendo (${ambito})? Quedarán como "Aprobada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}

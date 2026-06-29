@@ -246,11 +246,12 @@ export async function getPropuestaProfesor(id: number) {
 }
 
 export type SlotFiltro = {
-  estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string;
-  // Filtros adicionales: carrera (nombre del plan), turno (3er segmento de la clave del grupo,
-  // PLAN_Gnn_TURNO_CAMPUS), modalidad (s.modalidad) y compactada ("si"=compactacion_id not null,
-  // "no"=is null). Todos opcionales; "" = sin filtrar.
-  plan?: string; turno?: string; modalidad?: string; comp?: string;
+  estado?: string; q?: string; plantel?: string; cuatri?: string;
+  // Filtros MULTI-VALOR (unión / OR dentro del grupo): tipo, carrera (nombre del plan),
+  // turno (3er segmento de la clave del grupo, PLAN_Gnn_TURNO_CAMPUS) y modalidad (s.modalidad).
+  // Cada uno es una lista; [] o undefined = sin filtrar. 'comp' sigue siendo único
+  // ("si"=compactacion_id not null, "no"=is null).
+  tipo?: string[]; plan?: string[]; turno?: string[]; modalidad?: string[]; comp?: string;
   page?: number;
 };
 
@@ -312,10 +313,10 @@ export async function getConteoPorEstado(f: SlotFiltro) {
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
   if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
-  if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
-  if (f.plan) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = $${params.length})`); }
-  if (f.turno) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = $${params.length}`); }
-  if (f.modalidad) { params.push(f.modalidad); where.push(`s.modalidad = $${params.length}`); }
+  if (f.tipo?.length) { params.push(f.tipo); where.push(`s.tipo = ANY($${params.length})`); }
+  if (f.plan?.length) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = ANY($${params.length}))`); }
+  if (f.turno?.length) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = ANY($${params.length})`); }
+  if (f.modalidad?.length) { params.push(f.modalidad); where.push(`s.modalidad = ANY($${params.length})`); }
   if (f.comp === "si") where.push("s.compactacion_id is not null");
   else if (f.comp === "no") where.push("s.compactacion_id is null");
   // Los conteos de trabajo (total/sin/con/rev) excluyen las clases parqueadas (no_apertura);
@@ -345,10 +346,10 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 25) {
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
   if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
-  if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
-  if (f.plan) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = $${params.length})`); }
-  if (f.turno) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = $${params.length}`); }
-  if (f.modalidad) { params.push(f.modalidad); where.push(`s.modalidad = $${params.length}`); }
+  if (f.tipo?.length) { params.push(f.tipo); where.push(`s.tipo = ANY($${params.length})`); }
+  if (f.plan?.length) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = ANY($${params.length}))`); }
+  if (f.turno?.length) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = ANY($${params.length})`); }
+  if (f.modalidad?.length) { params.push(f.modalidad); where.push(`s.modalidad = ANY($${params.length})`); }
   if (f.comp === "si") where.push("s.compactacion_id is not null");
   else if (f.comp === "no") where.push("s.compactacion_id is null");
   if (f.estado === "asignado") where.push("a.profesor_id is not null and a.estado <> 'sugerida'");
@@ -401,10 +402,10 @@ export async function contarSugeridas(f: SlotFiltro = {}) {
   const params: unknown[] = [];
   if (f.plantel) { params.push(f.plantel); where.push(`s.plantel = $${params.length}`); }
   if (f.cuatri) { params.push(f.cuatri); where.push(`s.cuatrimestre = $${params.length}`); }
-  if (f.tipo) { params.push(f.tipo); where.push(`s.tipo = $${params.length}`); }
-  if (f.plan) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = $${params.length})`); }
-  if (f.turno) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = $${params.length}`); }
-  if (f.modalidad) { params.push(f.modalidad); where.push(`s.modalidad = $${params.length}`); }
+  if (f.tipo?.length) { params.push(f.tipo); where.push(`s.tipo = ANY($${params.length})`); }
+  if (f.plan?.length) { params.push(f.plan); where.push(`g.plan_id in (select id from planes where nombre = ANY($${params.length}))`); }
+  if (f.turno?.length) { params.push(f.turno); where.push(`split_part(g.clave, '_', 3) = ANY($${params.length})`); }
+  if (f.modalidad?.length) { params.push(f.modalidad); where.push(`s.modalidad = ANY($${params.length})`); }
   if (f.comp === "si") where.push("s.compactacion_id is not null");
   else if (f.comp === "no") where.push("s.compactacion_id is null");
   if (f.q) { params.push(`%${f.q}%`); where.push(`(m.nombre ilike $${params.length} or g.clave ilike $${params.length} or s.id_excel::text ilike $${params.length})`); }
