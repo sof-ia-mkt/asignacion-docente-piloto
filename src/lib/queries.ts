@@ -803,6 +803,9 @@ export type CompactGrupo = {
 export type CompactCluster = { horario: string; grupos: CompactGrupo[] };
 export type CompactCandidato = {
   materia_id: number; materia: string; plantel: string;
+  // Tipo de clase repetida: DISCIPLINAR | MÓDULO 1/2/3. Cada tipo es una clase distinta,
+  // así que una misma materia puede tener varias tarjetas (una por tipo abierto en 2+ grupos).
+  tipo: string;
   grupos: CompactGrupo[];
   // Sub-grupos que ya comparten EXACTAMENTE día+hora → compactación inmediata (sin mover horarios).
   listos: CompactCluster[];
@@ -814,11 +817,13 @@ const firmaHorario = (g: CompactGrupo): string | null =>
 
 export async function getCandidatosCompactacion(): Promise<CompactCandidato[]> {
   const act = await cicloActivo();
-  // Tomamos la clase "troncal" de cada materia (DISCIPLINAR): es la que comparten las carreras.
-  // Los módulos/virtual son sub-partes y se tratarían aparte en una fase posterior.
-  const filas = await q<CompactGrupo & { materia_id: number; materia: string; plantel: string }>(
-    `with disc as (
-       select s.id slot_id, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.turno,
+  // La misma clase repetida en varias carreras/grupos del mismo plantel es candidata a juntarse.
+  // Se detecta por tipo: la troncal (DISCIPLINAR) y cada módulo (MÓDULO 1/2/3) son clases distintas,
+  // así que se agrupan por materia+plantel+TIPO (no se mezclan entre sí). Virtual se excluye:
+  // es asincrónico, no tiene horario que pueda coincidir.
+  const filas = await q<CompactGrupo & { materia_id: number; materia: string; plantel: string; tipo: string }>(
+    `with base as (
+       select s.id slot_id, s.plantel, s.tipo, s.dia, s.hora_inicio, s.hora_fin, s.turno,
               s.materia_id, m.nombre materia, s.grupo_id, g.clave grupo, g.alumnos, g.es_chico,
               a.profesor_id, p.nombre profesor
          from slots s
@@ -826,27 +831,28 @@ export async function getCandidatosCompactacion(): Promise<CompactCandidato[]> {
          join grupos g on g.id = s.grupo_id
          left join asignaciones a on a.slot_id = s.id
          left join profesores p on p.id = a.profesor_id
-        where s.ciclo_id = ${act.id} and s.tipo = 'DISCIPLINAR'
+        where s.ciclo_id = ${act.id}
+          and s.tipo in ('DISCIPLINAR', 'MÓDULO 1', 'MÓDULO 2', 'MÓDULO 3')
           and s.compactacion_id is null and not s.no_apertura
      ),
      califican as (
-       select materia_id, plantel from disc
-       group by materia_id, plantel
+       select materia_id, plantel, tipo from base
+       group by materia_id, plantel, tipo
        having count(distinct grupo_id) >= 2
      )
-     select d.slot_id, d.grupo_id, d.grupo, d.alumnos, d.es_chico, d.dia, d.hora_inicio, d.hora_fin,
-            d.turno, d.profesor_id, d.profesor, d.materia_id, d.materia, d.plantel
-       from disc d
-       join califican c on c.materia_id = d.materia_id and c.plantel = d.plantel
-      order by d.materia, d.plantel, d.hora_inicio nulls last`);
+     select b.slot_id, b.grupo_id, b.grupo, b.alumnos, b.es_chico, b.dia, b.hora_inicio, b.hora_fin,
+            b.turno, b.profesor_id, b.profesor, b.materia_id, b.materia, b.plantel, b.tipo
+       from base b
+       join califican c on c.materia_id = b.materia_id and c.plantel = b.plantel and c.tipo = b.tipo
+      order by b.materia, b.plantel, b.tipo, b.hora_inicio nulls last`);
 
-  // Agrupa por materia+plantel y, dentro, detecta los clusters con horario idéntico.
+  // Agrupa por materia+plantel+tipo y, dentro, detecta los clusters con horario idéntico.
   const mapa = new Map<string, CompactCandidato>();
   for (const f of filas) {
-    const key = `${f.materia_id}|${f.plantel}`;
+    const key = `${f.materia_id}|${f.plantel}|${f.tipo}`;
     let c = mapa.get(key);
     if (!c) {
-      c = { materia_id: f.materia_id, materia: f.materia, plantel: f.plantel, grupos: [], listos: [] };
+      c = { materia_id: f.materia_id, materia: f.materia, plantel: f.plantel, tipo: f.tipo, grupos: [], listos: [] };
       mapa.set(key, c);
     }
     c.grupos.push({
@@ -869,7 +875,7 @@ export async function getCandidatosCompactacion(): Promise<CompactCandidato[]> {
   // Orden: primero los que tienen clusters "listos" (más grupos coincidentes arriba), luego el resto.
   return [...mapa.values()].sort((a, b) =>
     (b.listos.length - a.listos.length) || (b.grupos.length - a.grupos.length) ||
-    a.materia.localeCompare(b.materia));
+    a.materia.localeCompare(b.materia) || a.tipo.localeCompare(b.tipo));
 }
 
 // ---------- Compactaciones YA hechas (Fase 2: para mostrar y poder separar) ----------
@@ -879,6 +885,8 @@ export async function getCandidatosCompactacion(): Promise<CompactCandidato[]> {
 export type CompactacionActiva = {
   id: number;
   materia_id: number | null; materia: string | null; plantel: string | null;
+  // Tipo de clase (uniforme entre miembros: la acción de compactar no mezcla tipos).
+  tipo: string | null;
   razon: string | null; creado_en: string;
   dia: string | null; hora_inicio: string | null; hora_fin: string | null;
   profesor_id: number | null; profesor: string | null;
@@ -895,12 +903,12 @@ export async function getCompactacionesActivas(): Promise<CompactacionActiva[]> 
   const act = await cicloActivo();
   const filas = await q<{
     id: number; materia_id: number | null; materia: string | null; plantel: string | null;
-    razon: string | null; creado_en: string;
+    tipo: string | null; razon: string | null; creado_en: string;
     slot_id: number; grupo_id: number; grupo: string; alumnos: number | null;
     dia: string | null; hora_inicio: string | null; hora_fin: string | null;
     profesor_id: number | null; profesor: string | null; aula_id: number | null; aula: string | null;
   }>(
-    `select c.id, c.materia_id, m.nombre materia, c.plantel, c.razon, c.creado_en::text creado_en,
+    `select c.id, c.materia_id, m.nombre materia, c.plantel, s.tipo, c.razon, c.creado_en::text creado_en,
             s.id slot_id, s.grupo_id, g.clave grupo, g.alumnos,
             s.dia, s.hora_inicio, s.hora_fin,
             a.profesor_id, p.nombre profesor, s.aula_id, au.clave aula
@@ -919,7 +927,7 @@ export async function getCompactacionesActivas(): Promise<CompactacionActiva[]> 
     let c = mapa.get(f.id);
     if (!c) {
       c = {
-        id: f.id, materia_id: f.materia_id, materia: f.materia, plantel: f.plantel,
+        id: f.id, materia_id: f.materia_id, materia: f.materia, plantel: f.plantel, tipo: f.tipo,
         razon: f.razon, creado_en: f.creado_en,
         dia: f.dia, hora_inicio: f.hora_inicio, hora_fin: f.hora_fin,
         profesor_id: f.profesor_id, profesor: f.profesor, aula_id: f.aula_id, aula: f.aula,
@@ -939,10 +947,11 @@ export async function getCompactacionesActivas(): Promise<CompactacionActiva[]> 
   return [...mapa.values()];
 }
 
-// Grupos DISCIPLINAR de una materia+plantel que aún NO están compactados (ni "no apertura"):
-// son los que se pueden AGREGAR a una compactación existente. A diferencia del detector,
-// aquí no exigimos que haya 2+: tras compactar, pueden quedar sueltos de uno en uno.
-export async function getSlotsLibresParaMateria(materiaId: number, plantel: string): Promise<CompactGrupo[]> {
+// Grupos de una materia+plantel+tipo que aún NO están compactados (ni "no apertura"):
+// son los que se pueden AGREGAR a una compactación existente. Debe ser el MISMO tipo que la
+// clase (la acción rechaza mezclar Disciplinar/Módulo). A diferencia del detector, aquí no
+// exigimos que haya 2+: tras compactar, pueden quedar sueltos de uno en uno.
+export async function getSlotsLibresParaMateria(materiaId: number, plantel: string, tipo: string): Promise<CompactGrupo[]> {
   const act = await cicloActivo();
   return q<CompactGrupo>(
     `select s.id slot_id, s.grupo_id, g.clave grupo, g.alumnos, g.es_chico,
@@ -951,9 +960,9 @@ export async function getSlotsLibresParaMateria(materiaId: number, plantel: stri
        join grupos g on g.id = s.grupo_id
        left join asignaciones a on a.slot_id = s.id
        left join profesores p on p.id = a.profesor_id
-      where s.ciclo_id = ${act.id} and s.tipo = 'DISCIPLINAR' and s.materia_id = $1 and s.plantel = $2
+      where s.ciclo_id = ${act.id} and s.tipo = $3 and s.materia_id = $1 and s.plantel = $2
         and s.compactacion_id is null and not s.no_apertura
-      order by g.clave`, [materiaId, plantel]);
+      order by g.clave`, [materiaId, plantel, tipo]);
 }
 
 // Docentes recomendados para una materia (puntaje fuerte), para el selector de "asignar docente"

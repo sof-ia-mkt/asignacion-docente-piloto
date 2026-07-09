@@ -24,13 +24,17 @@ const firma = (g: { dia: string | null; hora_inicio: string | null; hora_fin: st
 
 const turnoDe = (clave: string | null) => clave?.split("_")[2] ?? null;   // PLAN_Gnn_TURNO_CAMPUS
 
+// "DISCIPLINAR" -> "Disciplinar", "MÓDULO 1" -> "Módulo 1" (para las etiquetas de tipo de clase).
+const tipoLabel = (t: string | null) =>
+  t ? t.trim().charAt(0).toUpperCase() + t.trim().slice(1).toLowerCase() : "";
+
 // Quita acentos y pasa a minúsculas: "mecanica" encuentra "MECÁNICA".
 const normaliza = (s: string) =>
   s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 
 const POR_PAGINA = 20;   // candidatas mostradas de inicio (cada "Mostrar más" suma otras tantas)
 
-type SlotInfo = CompactGrupo & { materia_id: number; materia: string; plantel: string };
+type SlotInfo = CompactGrupo & { materia_id: number; materia: string; plantel: string; tipo: string };
 
 export function CompactacionCliente({
   candidatos, compactaciones, docentesPorMateria, libresPorClave,
@@ -66,7 +70,7 @@ export function CompactacionCliente({
     const m = new Map<number, SlotInfo>();
     for (const c of candidatos)
       for (const g of c.grupos)
-        m.set(g.slot_id, { ...g, materia_id: c.materia_id, materia: c.materia, plantel: c.plantel });
+        m.set(g.slot_id, { ...g, materia_id: c.materia_id, materia: c.materia, plantel: c.plantel, tipo: c.tipo });
     return m;
   }, [candidatos]);
 
@@ -77,6 +81,7 @@ export function CompactacionCliente({
   // Diagnóstico de la selección.
   const planteles = [...new Set(seleccionados.map((s) => s.plantel))];
   const materiasSel = [...new Set(seleccionados.map((s) => s.materia_id))];
+  const tiposSel = [...new Set(seleccionados.map((s) => s.tipo))];
   const firmasSel = [...new Set(seleccionados.map((s) => firma(s)).filter(Boolean))];
   const turnosSel = [...new Set(seleccionados.map((s) => turnoDe(s.grupo)).filter(Boolean))];
   const sinHorario = seleccionados.some((s) => !firma(s));
@@ -112,6 +117,7 @@ export function CompactacionCliente({
   const abrirPanel = () => {
     if (sel.size < 2) { setError("Marca al menos 2 grupos para compactarlos en una sola clase."); return; }
     if (planteles.length > 1) { setError("Solo se pueden compactar grupos del mismo plantel."); return; }
+    if (tiposSel.length > 1) { setError("Solo se compacta la MISMA clase: no mezcles Disciplinar con Módulos."); return; }
     // Prepara el horario por defecto: si todos coinciden, usa esa firma; si no, deja vacío para elegir.
     setHorarioElegido(firmasSel.length === 1 ? firmasSel[0] : "");
     setError(null);
@@ -291,7 +297,7 @@ export function CompactacionCliente({
           </h2>
           <div className="space-y-2">
             {compFiltradas.map((c) => (
-              <TarjetaCompactada key={c.id} c={c} libres={libresPorClave[`${c.materia_id}|${c.plantel}`] ?? []} />
+              <TarjetaCompactada key={c.id} c={c} libres={libresPorClave[`${c.materia_id}|${c.plantel}|${c.tipo}`] ?? []} />
             ))}
           </div>
         </section>
@@ -314,7 +320,7 @@ export function CompactacionCliente({
             <span className="text-xs text-slate-400">— clic en una materia para ver sus grupos</span>
           </div>
           {mostrados.map((c) => {
-            const key = `${c.materia_id}|${c.plantel}`;
+            const key = `${c.materia_id}|${c.plantel}|${c.tipo}`;
             const abierta = autoExpand || expandidas.has(key);
             const enListos = new Set(c.listos.flatMap((cl) => cl.grupos.map((g) => g.slot_id)));
             const sueltos = c.grupos.filter((g) => !enListos.has(g.slot_id));
@@ -333,6 +339,9 @@ export function CompactacionCliente({
                   className="w-full flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50 text-left hover:bg-slate-100">
                   <span className="text-slate-400 text-xs w-3" aria-hidden>{abierta ? "▾" : "▸"}</span>
                   <span className="font-medium text-slate-800">{c.materia}</span>
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${c.tipo === "DISCIPLINAR" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
+                    {tipoLabel(c.tipo)}
+                  </span>
                   <span className="text-xs text-slate-500">· {plantelCorto(c.plantel)}</span>
                   <span className="text-xs text-slate-400">· {c.grupos.length} grupos</span>
                   {nChicos > 0 && (
@@ -427,12 +436,13 @@ export function CompactacionCliente({
                   </span>
                 )}
                 {planteles.length > 1 && <span className="text-xs text-red-600">⚠ Son de planteles distintos: no se pueden compactar juntos.</span>}
-                {planteles.length === 1 && materiasSel.length > 1 && <span className="text-xs text-amber-600">⚠ Materias con distinto nombre (lo confirmarás al compactar).</span>}
+                {planteles.length === 1 && tiposSel.length > 1 && <span className="text-xs text-red-600">⚠ Distinto tipo de clase ({tiposSel.map(tipoLabel).join("/")}): no se pueden compactar juntos.</span>}
+                {planteles.length === 1 && tiposSel.length === 1 && materiasSel.length > 1 && <span className="text-xs text-amber-600">⚠ Materias con distinto nombre (lo confirmarás al compactar).</span>}
                 {planteles.length === 1 && horarioAmbiguo && <span className="text-xs text-amber-600">⚠ Horarios distintos: elegirás uno.</span>}
                 {turnosSel.length > 1 && <span className="text-xs text-amber-600">⚠ Cruza turnos ({turnosSel.join("/")}).</span>}
                 <div className="ml-auto flex items-center gap-2">
                   <button type="button" onClick={limpiar} className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">Limpiar</button>
-                  <button type="button" onClick={abrirPanel} disabled={sel.size < 2 || planteles.length > 1}
+                  <button type="button" onClick={abrirPanel} disabled={sel.size < 2 || planteles.length > 1 || tiposSel.length > 1}
                     className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-800 disabled:opacity-50">
                     Compactar {sel.size} grupos →
                   </button>
@@ -592,6 +602,11 @@ function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: Compa
     <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-emerald-100">
         <span className="font-medium text-slate-800">{c.materia ?? "—"}</span>
+        {c.tipo && (
+          <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${c.tipo === "DISCIPLINAR" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
+            {tipoLabel(c.tipo)}
+          </span>
+        )}
         <span className="text-xs text-slate-500">· {plantelCorto(c.plantel)}</span>
         <span className="text-xs text-slate-600 whitespace-nowrap">· {horarioTxt(c)}</span>
         <span className="text-xs whitespace-nowrap">

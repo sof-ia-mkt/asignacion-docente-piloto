@@ -1261,7 +1261,7 @@ export async function editarAlumnosGrupo(
   grupoId: number, valor: number | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await exigirSesionActiva();
-  let nuevo: number | null = valor;
+  const nuevo: number | null = valor;
   if (nuevo != null) {
     if (!Number.isFinite(nuevo) || !Number.isInteger(nuevo) || nuevo < 0)
       return { ok: false, error: "El número de alumnos debe ser un entero de 0 o más." };

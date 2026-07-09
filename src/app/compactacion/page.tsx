@@ -22,16 +22,17 @@ export default async function CompactacionPage() {
   );
   const docentesPorMateria: Record<number, DocenteCandidato[]> = Object.fromEntries(pares);
 
-  // Grupos sueltos (sin compactar) por materia+plantel: para "Agregar grupos" a una clase ya hecha.
+  // Grupos sueltos (sin compactar) por materia+plantel+tipo: para "Agregar grupos" a una clase
+  // ya hecha. Incluye el tipo porque una compactación de módulo solo admite módulos del mismo tipo.
   const claves = [...new Set(
     compactaciones
-      .filter((c) => c.materia_id != null && c.plantel != null)
-      .map((c) => `${c.materia_id}|${c.plantel}`),
+      .filter((c) => c.materia_id != null && c.plantel != null && c.tipo != null)
+      .map((c) => `${c.materia_id}|${c.plantel}|${c.tipo}`),
   )];
   const paresLibres = await Promise.all(
     claves.map(async (k) => {
-      const [mid, plantel] = k.split("|");
-      return [k, await getSlotsLibresParaMateria(Number(mid), plantel)] as const;
+      const [mid, plantel, tipo] = k.split("|");
+      return [k, await getSlotsLibresParaMateria(Number(mid), plantel, tipo)] as const;
     }),
   );
   const libresPorClave: Record<string, CompactGrupo[]> = Object.fromEntries(paresLibres);
