@@ -88,6 +88,24 @@ export async function snapSlotHorario(slotId: number): Promise<SnapRow> {
   };
 }
 
+export async function snapSlotMateriaTipo(slotId: number): Promise<SnapRow> {
+  const [r] = await q<{ materia_id: number | null; tipo: string | null }>(
+    "select materia_id, tipo from slots where id=$1", [slotId]);
+  return {
+    kind: "row", tabla: "slots", clave: { id: slotId },
+    campos: r ? { materia_id: r.materia_id, tipo: r.tipo } : null,
+  };
+}
+
+export async function snapMateria(materiaId: number): Promise<SnapRow> {
+  const [r] = await q<{ nombre: string; slug: string }>(
+    "select nombre, slug from materias where id=$1", [materiaId]);
+  return {
+    kind: "row", tabla: "materias", clave: { id: materiaId },
+    campos: r ? { nombre: r.nombre, slug: r.slug } : null,
+  };
+}
+
 export async function snapSlotApertura(slotId: number): Promise<SnapRow> {
   const [r] = await q<{ no_apertura: boolean }>(
     "select no_apertura from slots where id=$1", [slotId]);
@@ -143,6 +161,7 @@ const REVERSIBLES: Record<string, Set<string>> = {
   aula: new Set(["editó"]),
   docente: new Set(["editó", "envió", "confirmó"]),   // editó datos · envió propuesta · confirmó propuesta
   candidatura: new Set(["agregó", "quitó"]),
+  materia: new Set(["editó"]),   // renombrar en el catálogo (afecta a todas las clases que la llevan)
 };
 
 // ¿Esta acción de bitácora es candidata a deshacer? (No mira la foto; solo el tipo de acción.)

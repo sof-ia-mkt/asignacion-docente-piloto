@@ -5,14 +5,16 @@
 // un botón "Abrir" fijo a la derecha que no se pierde al scrollear en horizontal.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Estado, Fuerza, TipoClase, planCorto, plantelCorto } from "@/lib/ui";
+import { Estado, Fuerza, planCorto, plantelCorto } from "@/lib/ui";
 import { marcarNoApertura, reactivarSlot } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { CeldaMateria, CeldaTipo } from "./celdas-editables";
 
 export type SlotFila = {
   id: number;
   id_excel: number | null;
   plantel: string;
+  materia_id: number | null;
   materia: string | null;
   plan: string | null;
   cuatrimestre: number | string | null;
@@ -31,7 +33,15 @@ export type SlotFila = {
 
 // `parked` = true cuando estamos viendo la pestaña "No se abren": entonces cada fila
 // muestra "Reactivar" en vez de "No abre".
-export function TablaAsignacion({ rows, parked = false }: { rows: SlotFila[]; parked?: boolean }) {
+export function TablaAsignacion({
+  rows,
+  materias,
+  parked = false,
+}: {
+  rows: SlotFila[];
+  materias: { id: number; nombre: string }[];
+  parked?: boolean;
+}) {
   const router = useRouter();
 
   return (
@@ -63,10 +73,12 @@ export function TablaAsignacion({ rows, parked = false }: { rows: SlotFila[]; pa
             >
               <td className="px-4 py-2 tabular-nums text-slate-500">{s.id_excel ?? <span className="text-slate-300">—</span>}</td>
               <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{plantelCorto(s.plantel)}</td>
-              <td className="px-4 py-2 text-slate-800">{s.materia ?? "—"}</td>
+              <td className="px-4 py-2 text-slate-800">
+                <CeldaMateria slotId={s.id} materiaId={s.materia_id} nombre={s.materia} materias={materias} />
+              </td>
               <td className="px-4 py-2 text-slate-600 hidden 2xl:table-cell">{planCorto(s.plan)}</td>
               <td className="px-4 py-2 text-slate-600 hidden lg:table-cell">{s.cuatrimestre ?? "—"}</td>
-              <td className="px-4 py-2 hidden lg:table-cell"><TipoClase t={s.tipo} /></td>
+              <td className="px-4 py-2 hidden lg:table-cell"><CeldaTipo slotId={s.id} tipo={s.tipo} /></td>
               <td className="px-4 py-2 text-slate-600">{s.grupo ?? "—"}</td>
               <td className="px-4 py-2 text-right text-slate-600 hidden 2xl:table-cell">{s.alumnos ?? <span className="text-slate-300">—</span>}</td>
               <td className="px-4 py-2 text-slate-600 hidden 2xl:table-cell">{s.aula ?? <span className="text-slate-300">—</span>}</td>

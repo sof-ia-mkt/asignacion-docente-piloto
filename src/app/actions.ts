@@ -14,7 +14,7 @@ import { registrarCambio } from "@/lib/audit";
 import { exigirSesionActiva } from "@/lib/session";
 import {
   aplicarReversion,
-  snapAsignacion, snapAsignacionMulti, snapSlotAula, snapSlotHorario, snapSlotApertura, snapAula, snapDocente, snapCandidatura, snapPropuesta,
+  snapAsignacion, snapAsignacionMulti, snapSlotAula, snapSlotHorario, snapSlotApertura, snapSlotMateriaTipo, snapMateria, snapAula, snapDocente, snapCandidatura, snapPropuesta,
 } from "@/lib/revertir";
 
 // Recalcula las alertas desde el ESTADO ACTUAL (diagnóstico; NO reasigna docentes ni aulas).
@@ -846,6 +846,126 @@ export async function editarHorario(slotId: number, fd: FormData) {
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
   revalidatePath("/alertas");
+}
+
+// ---------- Edición inline desde la lista: materia y tipo de la clase ----------
+
+// Los 5 tipos válidos de clase. La lógica de choques (MÓDULO 1/2/3 secuenciales) y las
+// alertas dependen de estos valores EXACTOS: por eso el tipo nunca se captura como texto libre.
+const TIPOS_CLASE = ["DISCIPLINAR", "MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "VIRTUAL"];
+
+export type EditarClaseState = { ok?: string; error?: string };
+
+// Re-apunta la clase a OTRA materia del catálogo (no toca el catálogo: cero riesgo de typo).
+// Para corregir un nombre mal escrito está renombrarMateria, que es otra operación.
+export async function editarMateriaSlot(slotId: number, materiaId: number): Promise<EditarClaseState> {
+  await exigirSesionActiva();
+  const act = await cicloActivo();
+  if (!Number.isFinite(materiaId)) return { error: "Materia no válida." };
+  const [nueva] = await q<{ nombre: string }>("select nombre from materias where id=$1", [materiaId]);
+  if (!nueva) return { error: "Esa materia no existe en el catálogo." };
+  const [info] = await q<{ materia: string | null; grupo: string | null }>(
+    `select m.nombre materia, g.clave grupo from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id where s.id = $1 and s.ciclo_id = ${act.id}`, [slotId]);
+  if (!info) return { error: "No se encontró la clase en el ciclo activo." };
+
+  const antes = await snapSlotMateriaTipo(slotId);
+  await q(`update slots set materia_id=$1 where id=$2 and ciclo_id=${act.id}`, [materiaId, slotId]);
+  await registrarCambio({
+    entidad: "clase",
+    entidadId: slotId,
+    accion: "editó",
+    descripcion: `Cambió la materia de la clase${info.grupo ? ` ${info.grupo}` : ""}: "${info.materia ?? "sin materia"}" → "${nueva.nombre}"`,
+    antes,
+    despues: await snapSlotMateriaTipo(slotId),
+  });
+  await recalcularAlertas();   // otra materia = otros candidatos posibles (sin_candidato puede cambiar)
+  revalidatePath(`/asignacion/${slotId}`);
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/");
+  return { ok: `Materia cambiada a "${nueva.nombre}".` };
+}
+
+// Cambia el tipo de la clase (Disciplinar / Módulo 1-3 / Virtual). Solo valores del catálogo fijo.
+export async function editarTipoSlot(slotId: number, tipo: string): Promise<EditarClaseState> {
+  await exigirSesionActiva();
+  const act = await cicloActivo();
+  if (!TIPOS_CLASE.includes(tipo)) return { error: "Tipo de clase no válido." };
+  const [info] = await q<{ materia: string | null; grupo: string | null; tipo: string | null }>(
+    `select m.nombre materia, g.clave grupo, s.tipo from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id where s.id = $1 and s.ciclo_id = ${act.id}`, [slotId]);
+  if (!info) return { error: "No se encontró la clase en el ciclo activo." };
+  if (info.tipo === tipo) return { ok: "Sin cambios." };
+
+  const antes = await snapSlotMateriaTipo(slotId);
+  await q(`update slots set tipo=$1 where id=$2 and ciclo_id=${act.id}`, [tipo, slotId]);
+  await registrarCambio({
+    entidad: "clase",
+    entidadId: slotId,
+    accion: "editó",
+    descripcion: `Cambió el tipo de "${info.materia ?? "clase"}"${info.grupo ? ` · ${info.grupo}` : ""}: ${info.tipo ?? "sin tipo"} → ${tipo}`,
+    antes,
+    despues: await snapSlotMateriaTipo(slotId),
+  });
+  await recalcularAlertas();   // el tipo participa en la detección de choques (módulos secuenciales)
+  revalidatePath(`/asignacion/${slotId}`);
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/");
+  return { ok: `Tipo cambiado a ${tipo}.` };
+}
+
+// ¿Cuántas clases llevan esta materia? (en TODOS los ciclos: renombrar también toca el historial).
+// Lo usa la lista para avisar el alcance ANTES de confirmar un renombrado.
+export async function usoMateria(materiaId: number): Promise<{ clases: number; nombre: string | null }> {
+  await exigirSesionActiva();
+  const [r] = await q<{ clases: number; nombre: string | null }>(
+    `select (select count(*)::int from slots where materia_id=$1) clases,
+            (select nombre from materias where id=$1) nombre`, [materiaId]);
+  return r ?? { clases: 0, nombre: null };
+}
+
+// Corrige el NOMBRE de una materia en el catálogo. A diferencia de editarMateriaSlot, esto
+// afecta a TODAS las clases que la llevan (mayo y septiembre) y a las candidaturas ligadas.
+// El nombre se normaliza (mayúsculas, espacios simples) para mantener el catálogo uniforme.
+export async function renombrarMateria(materiaId: number, nombreNuevo: string): Promise<EditarClaseState> {
+  await exigirSesionActiva();
+  const nombre = nombreNuevo.replace(/\s+/g, " ").trim().toUpperCase();
+  if (!nombre) return { error: "El nombre no puede quedar vacío." };
+
+  const [actual] = await q<{ nombre: string }>("select nombre from materias where id=$1", [materiaId]);
+  if (!actual) return { error: "Esa materia no existe en el catálogo." };
+  if (actual.nombre === nombre) return { ok: "Sin cambios." };
+
+  // Si ya existe otra materia con ese nombre, renombrar crearía un duplicado disfrazado.
+  // Lo correcto en ese caso es re-elegir la materia existente en cada clase, no renombrar.
+  const slug = slugify(nombre);
+  const [choque] = await q<{ nombre: string }>(
+    "select nombre from materias where (lower(nombre)=lower($1) or slug=$2) and id<>$3", [nombre, slug, materiaId]);
+  if (choque) {
+    return { error: `Ya existe la materia "${choque.nombre}". Si esta clase debía llevar esa, usa "cambiar materia" y elígela de la lista.` };
+  }
+
+  const [uso] = await q<{ n: number }>("select count(*)::int n from slots where materia_id=$1", [materiaId]);
+  const antes = await snapMateria(materiaId);
+  await q("update materias set nombre=$1, slug=$2 where id=$3", [nombre, slug, materiaId]);
+  await registrarCambio({
+    entidad: "materia",
+    entidadId: materiaId,
+    accion: "editó",
+    descripcion: `Renombró la materia "${actual.nombre}" → "${nombre}" (${uso.n} clase${uso.n === 1 ? "" : "s"} afectada${uso.n === 1 ? "" : "s"}, incluye historial)`,
+    antes,
+    despues: await snapMateria(materiaId),
+  });
+  await recalcularAlertas();   // los textos de las alertas citan el nombre de la materia
+  revalidatePath("/asignacion");
+  revalidatePath("/alertas");
+  revalidatePath("/profesores");
+  revalidatePath("/");
+  return { ok: `Materia renombrada a "${nombre}" (${uso.n} clases actualizadas).` };
 }
 
 // Marca una clase como "No se apertura": se oculta de la lista de trabajo y de los conteos,

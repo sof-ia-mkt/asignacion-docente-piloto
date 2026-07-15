@@ -100,6 +100,7 @@ const ENTIDAD_LABEL: Record<string, string> = {
   aula: "Aula",
   asignacion: "Asignación",
   candidatura: "Candidatura",
+  materia: "Materia",
   cv: "CV",
 };
 export const entidadLabel = (e: string) => ENTIDAD_LABEL[e] ?? e;
@@ -111,6 +112,7 @@ const ENTIDAD_COLOR: Record<string, string> = {
   aula: "bg-emerald-100 text-emerald-800 border-emerald-200",
   asignacion: "bg-amber-100 text-amber-800 border-amber-200",
   candidatura: "bg-sky-100 text-sky-800 border-sky-200",
+  materia: "bg-teal-100 text-teal-800 border-teal-200",
   cv: "bg-rose-100 text-rose-800 border-rose-200",
 };
 export function EntidadBadge({ e }: { e: string }) {
