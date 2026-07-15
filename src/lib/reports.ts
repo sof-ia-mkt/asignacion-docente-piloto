@@ -49,17 +49,17 @@ const plantelesLegibles = (csv: string | null): string =>
 // ---------- reportes por pantalla ----------
 
 async function reporteAsignacion(p: URLSearchParams): Promise<Report> {
-  // Los multi-valor viajan como lista separada por comas (igual que en la pantalla).
-  const parseMulti = (v: string | null) => (v ? v.split(",").filter(Boolean) : []);
+  // Los multi-valor viajan como parámetros REPETIDOS (?tipo=a&tipo=b), igual que en la
+  // pantalla: así un valor con coma (p. ej. una carrera "X, Y") no se parte en dos.
   const f = {
     estado: p.get("estado") ?? "",
     q: p.get("q") ?? "",
     plantel: p.get("plantel") ?? "",
     cuatri: p.get("cuatri") ?? "",
-    tipo: parseMulti(p.get("tipo")),
-    plan: parseMulti(p.get("plan")),
-    turno: parseMulti(p.get("turno")),
-    modalidad: parseMulti(p.get("modalidad")),
+    tipo: p.getAll("tipo").filter(Boolean),
+    plan: p.getAll("plan").filter(Boolean),
+    turno: p.getAll("turno").filter(Boolean),
+    modalidad: p.getAll("modalidad").filter(Boolean),
     comp: p.get("comp") ?? "",
   };
   // Sin paginar: el export trae TODAS las filas que cumplen el filtro.

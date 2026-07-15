@@ -99,6 +99,14 @@ export function CompactacionCliente({
 
   const toggle = (slotId: number) => {
     setError(null);
+    // Cambiar la selección invalida lo que el panel de confirmación tenía preparado:
+    // horario elegido, docente y "confirmar materia" corresponden a la selección ANTERIOR.
+    // Sin esto, deseleccionar todo y marcar otra materia reabría el panel con el horario
+    // de la materia previa — y ese horario ajeno podía aplicarse al compactar.
+    setPanelAbierto(false);
+    setHorarioElegido("");
+    setDocenteId("");
+    setConfirmarMateria(false);
     setSel((prev) => {
       const n = new Set(prev);
       if (n.has(slotId)) n.delete(slotId); else n.add(slotId);
@@ -333,38 +341,41 @@ export function CompactacionCliente({
             const seleccionarTodosListos = () => seleccionarCluster(c.listos.flatMap((cl) => cl.grupos));
             return (
               <div key={key} className="rounded-lg border border-slate-200 bg-white overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => toggleTarjeta(key)}
-                  className="w-full flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50 text-left hover:bg-slate-100">
-                  <span className="text-slate-400 text-xs w-3" aria-hidden>{abierta ? "▾" : "▸"}</span>
-                  <span className="font-medium text-slate-800">{c.materia}</span>
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${c.tipo === "DISCIPLINAR" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
-                    {tipoLabel(c.tipo)}
-                  </span>
-                  <span className="text-xs text-slate-500">· {plantelCorto(c.plantel)}</span>
-                  <span className="text-xs text-slate-400">· {c.grupos.length} grupos</span>
-                  {nChicos > 0 && (
-                    <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
-                      {nChicos} reducido{nChicos === 1 ? "" : "s"}
+                {/* Encabezado: el toggle y "Seleccionar N listos" son botones HERMANOS (no anidados).
+                    Un control interactivo dentro de <button> es HTML inválido y confunde el orden
+                    de foco y a los lectores de pantalla; antes era un <span role="button"> adentro. */}
+                <div className="w-full flex flex-wrap items-center gap-2 px-3 py-2 border-b border-slate-100 bg-slate-50 hover:bg-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => toggleTarjeta(key)}
+                    className="flex flex-wrap items-center gap-2 text-left flex-1 min-w-0">
+                    <span className="text-slate-400 text-xs w-3" aria-hidden>{abierta ? "▾" : "▸"}</span>
+                    <span className="font-medium text-slate-800">{c.materia}</span>
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${c.tipo === "DISCIPLINAR" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
+                      {tipoLabel(c.tipo)}
                     </span>
-                  )}
-                  {c.listos.length > 0 && (
-                    <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
-                      {c.listos.length} horario{c.listos.length === 1 ? "" : "s"} ya coincide{c.listos.length === 1 ? "" : "n"}
-                    </span>
-                  )}
+                    <span className="text-xs text-slate-500">· {plantelCorto(c.plantel)}</span>
+                    <span className="text-xs text-slate-400">· {c.grupos.length} grupos</span>
+                    {nChicos > 0 && (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-100 text-amber-800 border border-amber-200">
+                        {nChicos} reducido{nChicos === 1 ? "" : "s"}
+                      </span>
+                    )}
+                    {c.listos.length > 0 && (
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        {c.listos.length} horario{c.listos.length === 1 ? "" : "s"} ya coincide{c.listos.length === 1 ? "" : "n"}
+                      </span>
+                    )}
+                  </button>
                   {nListos >= 2 && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      onClick={(e) => { e.stopPropagation(); seleccionarTodosListos(); }}
-                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); seleccionarTodosListos(); } }}
-                      className="ml-auto text-[11px] px-2 py-0.5 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50 cursor-pointer">
+                    <button
+                      type="button"
+                      onClick={seleccionarTodosListos}
+                      className="ml-auto shrink-0 text-[11px] px-2 py-0.5 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50">
                       Seleccionar {nListos} listos
-                    </span>
+                    </button>
                   )}
-                </button>
+                </div>
 
                 {abierta && (
                   <>

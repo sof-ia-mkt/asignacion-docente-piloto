@@ -17,16 +17,19 @@ export default async function ImprimirPage({
   const { tipo } = await params;
   const sp = await searchParams;
   // Reconstruye los filtros como URLSearchParams para reusar getReport tal cual.
+  // Los multi-valor viajan como parámetros REPETIDOS (?tipo=a&tipo=b): se agregan todos.
   const usp = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) {
     if (typeof v === "string") usp.set(k, v);
-    else if (Array.isArray(v) && v[0]) usp.set(k, v[0]);
+    else if (Array.isArray(v)) for (const x of v) if (x) usp.append(k, x);
   }
 
   const report = await getReport(tipo, usp);
   if (!report) notFound();
 
-  const fecha = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" });
+  // Zona horaria FIJA (no la del servidor, que en Vercel es UTC): a las 11 pm en Tijuana
+  // el documento debe decir el día de Tijuana, no el de mañana.
+  const fecha = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Tijuana" });
 
   return (
     <div className="print-root">

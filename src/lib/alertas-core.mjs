@@ -44,6 +44,18 @@ export async function calcularAlertas(query, cicloId) {
   }
   for (const arr of porMateria.values()) arr.sort((a, b) => b.puntaje - a.puntaje);
 
+  // Candidatos DÉBILES por materia (con señal, pero bajo el umbral SCORE_MIN): solo para
+  // que el texto de sin_candidato no afirme "nadie tiene historial ni CV" cuando sí hay
+  // personas con señal débil — el sistema no las propone, pero coordinación debe saberlo.
+  const debilesRows = await query(
+    `select materia_id, count(*)::int n from (
+       select mc.materia_id, mc.profesor_id, sum(mc.puntaje) pts
+         from materia_candidatos mc join profesores p on p.id = mc.profesor_id
+        where p.nombre <> all($1)
+        group by mc.materia_id, mc.profesor_id
+     ) x where pts < $2 group by materia_id`, [PLACEHOLDERS, SCORE_MIN]);
+  const debiles = new Map(debilesRows.map((r) => [r.materia_id, r.n]));
+
   // slots de septiembre con el docente asignado actual (si lo hay).
   // Traemos s.compactacion_id: los slots que comparten ese id son UNA sola clase
   // (un docente, un aula, un horario), aunque sean de carreras/grupos distintos.
@@ -92,9 +104,12 @@ export async function calcularAlertas(query, cicloId) {
     vistoSinDocente.add(uk);
     const cands = porMateria.get(s.materia_id) || [];
     if (!cands.length) {
+      const nDeb = debiles.get(s.materia_id) || 0;
       alertas.push({
         tipo: "sin_candidato", severidad: "alta", slot_id: s.id, slot_id_2: null, profesor_id: null,
-        detalle: `Nadie en el catálogo tiene historial ni CV para esta materia, así que el sistema no pudo proponer a nadie. Hay que buscar o contratar a un docente.`,
+        detalle: nDeb > 0
+          ? `Ningún docente tiene respaldo suficiente (historial o CV con confianza alta) para esta materia, así que el sistema no propuso a nadie. Hay ${nDeb} docente${nDeb === 1 ? "" : "s"} con señal débil: coordinación puede valorarlos y asignar a mano, o buscar a alguien más.`
+          : `Nadie en el catálogo tiene historial ni CV para esta materia, así que el sistema no pudo proponer a nadie. Hay que buscar o contratar a un docente.`,
       });
       continue;
     }

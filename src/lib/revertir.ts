@@ -51,8 +51,10 @@ export type Snap = SnapRow | SnapSet | SnapMulti;
 
 // ---------- Lectores de foto (usados al escribir Y para comparar al deshacer) ----------
 
-export async function snapAsignacion(slotId: number): Promise<SnapRow> {
-  const [r] = await q<{ profesor_id: number | null; estado: string; puntaje: number | null; razon: string | null; automatica: boolean }>(
+// `exec` opcional: pásale el cliente de una transacción abierta para que la foto se lea
+// DENTRO de ella (p. ej. asignar(), que toma foto + escribe + re-fotografía atómicamente).
+export async function snapAsignacion(slotId: number, exec: Exec = q): Promise<SnapRow> {
+  const [r] = await exec<{ profesor_id: number | null; estado: string; puntaje: number | null; razon: string | null; automatica: boolean }>(
     "select profesor_id, estado, puntaje, razon, automatica from asignaciones where slot_id=$1", [slotId]);
   return {
     kind: "row", tabla: "asignaciones", clave: { slot_id: slotId },
@@ -63,10 +65,11 @@ export async function snapAsignacion(slotId: number): Promise<SnapRow> {
 // Foto de la asignación de UNA clase, abarcando todos los slots dados. Si es un solo slot
 // devuelve el SnapRow de siempre (compatibilidad); si son varios (clase compactada) devuelve
 // un SnapMulti para que deshacer restaure el conjunto completo, no solo el slot disparador.
-export async function snapAsignacionMulti(slotIds: number[]): Promise<Snap> {
+export async function snapAsignacionMulti(slotIds: number[], exec: Exec = q): Promise<Snap> {
   const ids = [...new Set(slotIds)];
-  if (ids.length <= 1) return snapAsignacion(ids[0]);
-  const snaps = await Promise.all(ids.map((id) => snapAsignacion(id)));
+  if (ids.length <= 1) return snapAsignacion(ids[0], exec);
+  const snaps: SnapRow[] = [];
+  for (const id of ids) snaps.push(await snapAsignacion(id, exec));   // secuencial: un cliente de transacción no admite queries en paralelo
   return { kind: "multi", snaps };
 }
 
@@ -88,12 +91,24 @@ export async function snapSlotHorario(slotId: number): Promise<SnapRow> {
   };
 }
 
-export async function snapSlotMateriaTipo(slotId: number): Promise<SnapRow> {
-  const [r] = await q<{ materia_id: number | null; tipo: string | null }>(
-    "select materia_id, tipo from slots where id=$1", [slotId]);
+// Fotos por CAMPO (no un combo materia+tipo): si la foto abarcara ambos, deshacer un
+// cambio de materia se bloquearía porque alguien después cambió el tipo — un campo que
+// la acción original ni tocó. Foto mínima = deshacer que no estorba por cambios ortogonales.
+export async function snapSlotMateria(slotId: number): Promise<SnapRow> {
+  const [r] = await q<{ materia_id: number | null }>(
+    "select materia_id from slots where id=$1", [slotId]);
   return {
     kind: "row", tabla: "slots", clave: { id: slotId },
-    campos: r ? { materia_id: r.materia_id, tipo: r.tipo } : null,
+    campos: r ? { materia_id: r.materia_id } : null,
+  };
+}
+
+export async function snapSlotTipo(slotId: number): Promise<SnapRow> {
+  const [r] = await q<{ tipo: string | null }>(
+    "select tipo from slots where id=$1", [slotId]);
+  return {
+    kind: "row", tabla: "slots", clave: { id: slotId },
+    campos: r ? { tipo: r.tipo } : null,
   };
 }
 

@@ -34,8 +34,15 @@ const nav = [
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const usuario = await sesionActual();
 
-  // Sin sesión (p. ej. la página /login): layout mínimo, sin nav ni datos de la app.
+  // Sin sesión válida: solo /login puede renderizar (con el layout mínimo). Cualquier otra
+  // ruta redirige. Esto cubre el hueco del middleware, que solo valida la FIRMA del token:
+  // si el usuario fue desactivado, su cookie sigue firmada pero sesionActual() ya da null,
+  // y sin este redirect la página renderizaría datos igual (baja sin corte real de acceso).
   if (!usuario) {
+    const pathname = (await headers()).get("x-pathname") ?? "";
+    if (pathname !== "/login" && !pathname.startsWith("/login/")) {
+      redirect("/login");
+    }
     return (
       <html lang="es" className="h-full antialiased">
         <body className="min-h-full bg-slate-50">{children}</body>

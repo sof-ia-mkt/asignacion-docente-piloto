@@ -15,7 +15,8 @@ export default async function PropuestaPage({ params }: { params: Promise<{ id: 
   if (!data) notFound();
   const { prof, clases, horasPorModulo, totales, ciclo } = data;
 
-  const fecha = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" });
+  // Zona horaria fija (el servidor corre en UTC): la propuesta debe llevar la fecha de Tijuana.
+  const fecha = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric", timeZone: "America/Tijuana" });
   const horario = (c: (typeof clases)[number]) =>
     c.dia ? `${c.dia} ${c.hora_inicio ?? ""}–${c.hora_fin ?? ""}`.trim() : "En línea (sin hora fija)";
 

@@ -13,8 +13,8 @@ import { recomputarAlertas } from "@/lib/alertas-core.mjs";
 import { registrarCambio } from "@/lib/audit";
 import { exigirSesionActiva } from "@/lib/session";
 import {
-  aplicarReversion,
-  snapAsignacion, snapAsignacionMulti, snapSlotAula, snapSlotHorario, snapSlotApertura, snapSlotMateriaTipo, snapMateria, snapAula, snapDocente, snapCandidatura, snapPropuesta,
+  aplicarReversion, type Snap,
+  snapAsignacion, snapAsignacionMulti, snapSlotAula, snapSlotHorario, snapSlotApertura, snapSlotMateria, snapSlotTipo, snapMateria, snapAula, snapDocente, snapCandidatura, snapPropuesta,
 } from "@/lib/revertir";
 
 // Recalcula las alertas desde el ESTADO ACTUAL (diagnóstico; NO reasigna docentes ni aulas).
@@ -48,6 +48,7 @@ export async function recalcularAlertasManual() {
 // Toda la app (queries, acciones, alertas) lee esa cookie vía cicloActivo(). Revalida en
 // modo 'layout' para que TODAS las páginas se refresquen con el ciclo recién elegido.
 export async function seleccionarCiclo(fd: FormData) {
+  await exigirSesionActiva();   // misma regla que toda acción mutante (cambia a qué ciclo apuntan las siguientes)
   const codigo = String(fd.get("ciclo") ?? "").trim();
   const ciclos = await getCiclos();
   if (!ciclos.some((c) => c.codigo === codigo)) return;   // ignora valores que no existen
@@ -205,32 +206,55 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
     ? (await q<{ id: number }>(`select id from slots where compactacion_id=$1 and ciclo_id=${act.id}`, [s.compactacion_id])).map((r) => r.id)
     : [slotId];
   if (!objetivos.includes(slotId)) objetivos.push(slotId);
-  if (!sinHorario) {
-    const [choque] = await q<{ mat: string }>(
-      `select coalesce(m2.nombre, 'otra clase') || coalesce(' · ' || g2.clave, '') mat
-         from asignaciones a2
-         join slots s2 on s2.id = a2.slot_id
-         left join materias m2 on m2.id = s2.materia_id
-         left join grupos g2 on g2.id = s2.grupo_id
-        where a2.profesor_id = $1 and s2.ciclo_id = ${act.id} and s2.id <> all($2)
-          and s2.dia = $3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
-          and ${sqlMismoPeriodo("$6", "s2.tipo")}
-        order by s2.hora_inicio limit 1`,
-      [profesorId, objetivos, s.dia, s.hora_inicio, s.hora_fin, s.tipo]);
-    if (choque)
-      throw new Error(`Ese docente ya da "${choque.mat}" a esa misma hora. No se puede empalmar: primero libéralo de esa clase o cambia el horario de alguna de las dos.`);
+  // Chequeo de empalme + escritura + fotos en UNA transacción, con candado por docente:
+  // dos coordinadores asignando al MISMO docente a la vez se serializan aquí, así el
+  // check-then-insert no puede pasar dos veces "en paralelo" y crear un empalme. Además
+  // las fotos del antes/después se leen dentro de la transacción: reflejan exactamente
+  // lo que ESTA acción escribió (una relectura suelta podría capturar el cambio de otro).
+  let antes: Snap, despues: Snap;
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const exec = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows as T[]);
+    // Candado por docente (se libera al commit/rollback). OJO: la forma de DOS argumentos
+    // toma enteros de 32 bits (int4, int4) — la constante debe caber en int4.
+    await exec("select pg_advisory_xact_lock(492813475, $1::int)", [profesorId]);
+    if (!sinHorario) {
+      const [choque] = await exec<{ mat: string }>(
+        `select coalesce(m2.nombre, 'otra clase') || coalesce(' · ' || g2.clave, '') mat
+           from asignaciones a2
+           join slots s2 on s2.id = a2.slot_id
+           left join materias m2 on m2.id = s2.materia_id
+           left join grupos g2 on g2.id = s2.grupo_id
+          where a2.profesor_id = $1 and s2.ciclo_id = ${act.id} and s2.id <> all($2)
+            and not s2.no_apertura
+            and s2.dia = $3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+            and ${sqlMismoPeriodo("$6", "s2.tipo")}
+          order by s2.hora_inicio limit 1`,
+        [profesorId, objetivos, s.dia, s.hora_inicio, s.hora_fin, s.tipo]);
+      if (choque)
+        throw new Error(`Ese docente ya da "${choque.mat}" a esa misma hora. No se puede empalmar: primero libéralo de esa clase o cambia el horario de alguna de las dos.`);
+    }
+    antes = await snapAsignacionMulti(objetivos, exec);   // foto del antes (todos los grupos de la clase)
+    await exec(
+      `insert into asignaciones (slot_id, profesor_id, estado, puntaje, razon, automatica)
+       select unnest($1::int[]), $2, 'confirmada', $3, $4, false
+       on conflict (slot_id) do update
+         set profesor_id = excluded.profesor_id,
+             estado = 'confirmada',
+             puntaje = excluded.puntaje,
+             razon = excluded.razon,
+             automatica = false`,
+      [objetivos, profesorId, puntaje ?? null, razon ?? null]);
+    despues = await snapAsignacionMulti(objetivos, exec);
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    throw e;
+  } finally {
+    client.release();
   }
-  const antes = await snapAsignacionMulti(objetivos);   // foto del antes (todos los grupos de la clase)
-  await q(
-    `insert into asignaciones (slot_id, profesor_id, estado, puntaje, razon, automatica)
-     select unnest($1::int[]), $2, 'confirmada', $3, $4, false
-     on conflict (slot_id) do update
-       set profesor_id = excluded.profesor_id,
-           estado = 'confirmada',
-           puntaje = excluded.puntaje,
-           razon = excluded.razon,
-           automatica = false`,
-    [objetivos, profesorId, puntaje ?? null, razon ?? null]);
   const [info] = await q<{ materia: string | null; grupo: string | null; profesor: string | null }>(
     `select m.nombre materia, g.clave grupo, p.nombre profesor
        from slots s
@@ -244,7 +268,7 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
     accion: "asignó",
     descripcion: `Asignó a "${info?.profesor ?? "docente"}" en "${info?.materia ?? "clase"}"${info?.grupo ? ` · ${info.grupo}` : ""}`,
     antes,
-    despues: await snapAsignacionMulti(objetivos),
+    despues,
   });
   await recalcularAlertas();   // poner a un docente puede resolver un choque/sin_candidato o crear sobrecarga
   revalidatePath(`/asignacion/${slotId}`);
@@ -357,7 +381,9 @@ export async function asignarAula(slotId: number, aulaId: number) {
     accion: "asignó",
     descripcion: `Asignó el aula "${info?.aula ?? "salón"}" a "${info?.materia ?? "clase"}"${info?.grupo ? ` · ${info.grupo}` : ""}`,
     antes,
-    despues: await snapSlotAula(slotId),
+    // Foto determinista de lo escrito (no relectura): bajo concurrencia, releer podría
+    // capturar el cambio de otro coordinador y el deshacer pisaría su trabajo en silencio.
+    despues: { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { aula_id: aulaId, aula_manual: true } },
   });
   await recalcularAlertas();   // detecta choque_aula y quita sin_aula de este slot, sobre el estado actual
   revalidatePath(`/asignacion/${slotId}`);
@@ -383,7 +409,8 @@ export async function quitarAula(slotId: number) {
     accion: "quitó",
     descripcion: `Quitó el aula${info?.aula ? ` "${info.aula}"` : ""} de "${info?.materia ?? "clase"}"${info?.grupo ? ` · ${info.grupo}` : ""}`,
     antes,
-    despues: await snapSlotAula(slotId),
+    // Foto determinista de lo escrito (no relectura): ver nota en asignarAula.
+    despues: { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { aula_id: null, aula_manual: false } },
   });
   await recalcularAlertas();
   revalidatePath(`/asignacion/${slotId}`);
@@ -533,9 +560,16 @@ export async function editarAula(aulaId: number, fd: FormData) {
     accion: "editó",
     descripcion: `Editó el salón "${a?.clave ?? `#${aulaId}`}"${tipo ? ` (${tipo})` : ""}${cap.ok && cap.val != null ? ` · cupo ${cap.val}` : ""}`,
     antes,
-    despues: await snapAula(aulaId),
+    // Foto determinista de lo que ESTA acción escribió (no una relectura que otra
+    // acción concurrente podría haber pisado): así el deshacer compara contra lo real.
+    despues: { kind: "row", tabla: "aulas", clave: { id: aulaId }, campos: { tipo, capacidad: cap.ok ? cap.val : null } },
   });
+  // La capacidad alimenta la alerta "ningún salón alcanza" y el acomodo automático:
+  // sin recálculo, /alertas mostraría el diagnóstico viejo.
+  await recalcularAlertas();
   revalidatePath("/aulas");
+  revalidatePath("/alertas");
+  revalidatePath("/");
 }
 
 // Borra un salón SOLO si ninguna clase de septiembre lo usa (si no, no hace nada: protege los datos).
@@ -814,9 +848,11 @@ const limpiarHora = (h: string) => {
   return `${String(hh).padStart(2, "0")}:${m[2]}`;
 };
 
+export type EditarHorarioState = { ok?: string; error?: string };
+
 // Edita día y horario de una materia por grupo. NO re-corre el motor (no reasigna docentes),
 // pero sí recalcula las alertas: cambiar la hora puede crear o resolver choques y traslados.
-export async function editarHorario(slotId: number, fd: FormData) {
+export async function editarHorario(slotId: number, _prev: EditarHorarioState, fd: FormData): Promise<EditarHorarioState> {
   await exigirSesionActiva();
   const act = await cicloActivo();
   const dia = String(fd.get("dia") ?? "").trim() || null;
@@ -826,6 +862,10 @@ export async function editarHorario(slotId: number, fd: FormData) {
   // Una hora suelta (solo inicio o solo fin) no es un horario usable, así que la
   // descartamos antes de guardar para no dejar un horario a medias.
   if (!hi || !hf) { hi = null; hf = null; }
+  // Un rango invertido o de duración cero nunca "traslapa" con nada: escondería
+  // empalmes reales de docente y de aula. Se rechaza en la captura.
+  if (hi && hf && hi >= hf)
+    return { error: `El horario está invertido o vacío (${hi}–${hf}): la hora de inicio debe ser antes que la de fin.` };
   const antes = await snapSlotHorario(slotId);   // foto del horario previo (para deshacer)
   await q(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id=$4 and ciclo_id=${act.id}`,
     [dia, hi, hf, slotId]);
@@ -840,12 +880,14 @@ export async function editarHorario(slotId: number, fd: FormData) {
     accion: "editó",
     descripcion: `Editó el horario de "${info?.materia ?? "clase"}"${info?.grupo ? ` · ${info.grupo}` : ""} → ${horarioTxt}`,
     antes,
-    despues: await snapSlotHorario(slotId),
+    // Foto determinista de lo escrito (no relectura): ver nota en asignarAula.
+    despues: { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { dia, hora_inicio: hi, hora_fin: hf } },
   });
   await recalcularAlertas();   // cambiar día/hora puede crear o resolver choques, traslados y choques de aula
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
   revalidatePath("/alertas");
+  return { ok: `Horario guardado: ${horarioTxt}.` };
 }
 
 // ---------- Edición inline desde la lista: materia y tipo de la clase ----------
@@ -870,7 +912,7 @@ export async function editarMateriaSlot(slotId: number, materiaId: number): Prom
        left join grupos g on g.id = s.grupo_id where s.id = $1 and s.ciclo_id = ${act.id}`, [slotId]);
   if (!info) return { error: "No se encontró la clase en el ciclo activo." };
 
-  const antes = await snapSlotMateriaTipo(slotId);
+  const antes = await snapSlotMateria(slotId);   // foto SOLO del campo que esta acción toca
   await q(`update slots set materia_id=$1 where id=$2 and ciclo_id=${act.id}`, [materiaId, slotId]);
   await registrarCambio({
     entidad: "clase",
@@ -878,7 +920,7 @@ export async function editarMateriaSlot(slotId: number, materiaId: number): Prom
     accion: "editó",
     descripcion: `Cambió la materia de la clase${info.grupo ? ` ${info.grupo}` : ""}: "${info.materia ?? "sin materia"}" → "${nueva.nombre}"`,
     antes,
-    despues: await snapSlotMateriaTipo(slotId),
+    despues: { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { materia_id: materiaId } },
   });
   await recalcularAlertas();   // otra materia = otros candidatos posibles (sin_candidato puede cambiar)
   revalidatePath(`/asignacion/${slotId}`);
@@ -900,7 +942,7 @@ export async function editarTipoSlot(slotId: number, tipo: string): Promise<Edit
   if (!info) return { error: "No se encontró la clase en el ciclo activo." };
   if (info.tipo === tipo) return { ok: "Sin cambios." };
 
-  const antes = await snapSlotMateriaTipo(slotId);
+  const antes = await snapSlotTipo(slotId);   // foto SOLO del campo que esta acción toca
   await q(`update slots set tipo=$1 where id=$2 and ciclo_id=${act.id}`, [tipo, slotId]);
   await registrarCambio({
     entidad: "clase",
@@ -908,7 +950,7 @@ export async function editarTipoSlot(slotId: number, tipo: string): Promise<Edit
     accion: "editó",
     descripcion: `Cambió el tipo de "${info.materia ?? "clase"}"${info.grupo ? ` · ${info.grupo}` : ""}: ${info.tipo ?? "sin tipo"} → ${tipo}`,
     antes,
-    despues: await snapSlotMateriaTipo(slotId),
+    despues: { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { tipo } },
   });
   await recalcularAlertas();   // el tipo participa en la detección de choques (módulos secuenciales)
   revalidatePath(`/asignacion/${slotId}`);
@@ -1090,6 +1132,10 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
 
   if (!plantel) return { error: "Elige un plantel." };
   if (!materiaNombre) return { error: "Escribe el nombre de la materia." };
+  // Un rango invertido o de duración cero escapa a la detección de choques (nunca "traslapa"
+  // con nada), escondiendo empalmes reales de docente y de aula. Se rechaza en la captura.
+  if (hi && hf && hi >= hf)
+    return { error: `El horario está invertido o vacío (${hi}–${hf}): la hora de inicio debe ser antes que la de fin.` };
 
   // Materia: reutiliza por nombre (case-insensitive) o crea una nueva.
   let [materia] = await q<{ id: number }>(
@@ -1252,6 +1298,7 @@ export async function compactar(
          left join materias m2 on m2.id=s2.materia_id
          left join grupos g2 on g2.id=s2.grupo_id
         where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+          and not s2.no_apertura
           and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
           and ${sqlMismoPeriodo("$6", "s2.tipo")}
         order by s2.hora_inicio limit 1`,
@@ -1403,6 +1450,9 @@ export async function editarAlumnosGrupo(
     antes: { alumnos: g.alumnos },
     despues: { alumnos: nuevo },
   });
+  // El número de alumnos alimenta la alerta "ningún salón alcanza" (severidad y texto):
+  // sin recálculo, /alertas mostraría el diagnóstico viejo hasta la siguiente acción.
+  await recalcularAlertas();
   // Afecta varias pantallas, no solo Compactación.
   revalidatePath("/compactacion");
   revalidatePath("/aulas");
@@ -1504,6 +1554,7 @@ export async function agregarACompactacion(
          left join materias m2 on m2.id=s2.materia_id
          left join grupos g2 on g2.id=s2.grupo_id
         where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+          and not s2.no_apertura
           and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
           and ${sqlMismoPeriodo("$6", "s2.tipo")}
         order by s2.hora_inicio limit 1`,
@@ -1591,6 +1642,7 @@ export async function homogeneizarHorarioCompactacion(
          left join materias m2 on m2.id=s2.materia_id
          left join grupos g2 on g2.id=s2.grupo_id
         where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+          and not s2.no_apertura
           and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
           and ${sqlMismoPeriodo("$6", "s2.tipo")}
         order by s2.hora_inicio limit 1`,

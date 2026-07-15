@@ -45,8 +45,8 @@ export default async function DocentesDashPage({
           <p className="text-sm text-slate-400">Todos los docentes asignables tienen al menos una materia propuesta.</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
-            {sinAsignar.map((d) => (
-              <li key={d.nombre} className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs">{d.nombre}</li>
+            {sinAsignar.map((d, i) => (
+              <li key={`${d.nombre}-${i}`} className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 text-xs">{d.nombre}</li>
             ))}
           </ul>
         )}

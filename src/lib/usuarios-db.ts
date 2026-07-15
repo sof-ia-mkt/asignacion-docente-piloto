@@ -1,5 +1,6 @@
 // Acceso a la tabla `usuarios` (padrón en la base). SOLO servidor.
 // El password_hash NUNCA sale de aquí salvo para verificar el login.
+import { randomInt } from "node:crypto";
 import { q } from "./db";
 import { cifrarPassword } from "./password";
 
@@ -20,10 +21,16 @@ export type UsuarioRow = {
 const MAX_INTENTOS = 5;
 const BLOQUEO_MINUTOS = 15;
 
-// Contraseña temporal compartida con la que se crea/resetea a un usuario. La persona
-// debería cambiarla al entrar (pendiente). Vive aquí (no en una "use server") para poder
-// importarla desde acciones y pantallas; el seed (scripts/cargar_usuarios.mjs) la replica.
-export const PASSWORD_TEMP = "Cenyca!!23";
+// Contraseña temporal ALEATORIA por usuario (antes era una constante compartida en el repo:
+// cualquiera con acceso al código podía entrar a una cuenta recién creada/reseteada antes
+// que su dueño). Se genera al crear/resetear, se muestra UNA vez al admin y no se guarda
+// en claro. Alfabeto sin caracteres confundibles (0/O, 1/l/I) para poderla dictar.
+const ABC_TEMPORAL = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+export function generarPasswordTemporal(): string {
+  let s = "";
+  for (let i = 0; i < 10; i++) s += ABC_TEMPORAL[randomInt(ABC_TEMPORAL.length)];
+  return `T-${s}`;
+}
 
 // Rol con acceso total a la plataforma (todo lo que ve un admin, incluida la gestión
 // de usuarios). El acceso lo otorga el ROL mismo, sin depender del flag es_admin.

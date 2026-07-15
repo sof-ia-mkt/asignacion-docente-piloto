@@ -2,9 +2,14 @@
 import { redirect } from "next/navigation";
 import { abrirSesion, cerrarSesion } from "@/lib/session";
 import { usuarioParaLogin, registrarLoginFallido, limpiarLoginFallidos } from "@/lib/usuarios-db";
-import { verificarPassword } from "@/lib/password";
+import { verificarPassword, cifrarPassword } from "@/lib/password";
 
 export type LoginState = { error?: string };
+
+// Hash señuelo: cuando el usuario NO existe se verifica contra esto de todos modos, para
+// que el login tarde lo mismo que con un usuario real. Sin esto, la respuesta instantánea
+// delataba qué nombres de usuario existen (enumeración por tiempos).
+const HASH_SENUELO = cifrarPassword("senuelo-para-tiempo-uniforme");
 
 export async function iniciarSesion(_prev: LoginState, fd: FormData): Promise<LoginState> {
   const usuario = String(fd.get("usuario") ?? "").trim().toLowerCase();
@@ -18,8 +23,11 @@ export async function iniciarSesion(_prev: LoginState, fd: FormData): Promise<Lo
     return { error: "Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo." };
   }
 
-  // Mismo mensaje para usuario inexistente o contraseña mala: no revelamos cuál falló.
-  if (!u || !verificarPassword(password, u.password_hash)) {
+  // Mismo mensaje Y mismo costo para usuario inexistente o contraseña mala: no revelamos
+  // cuál falló ni por el texto ni por el tiempo de respuesta. La verificación se ejecuta
+  // SIEMPRE (contra el señuelo si el usuario no existe) — sin corto circuito.
+  const passwordOk = verificarPassword(password, u?.password_hash ?? HASH_SENUELO);
+  if (!u || !passwordOk) {
     if (u) await registrarLoginFallido(u.id);
     return { error: "Usuario o contraseña incorrectos." };
   }

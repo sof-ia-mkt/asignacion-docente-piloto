@@ -10,15 +10,16 @@ import { TablaAsignacion } from "./tabla-asignacion";
 
 export default async function AsignacionPage({
   searchParams,
-}: { searchParams: Promise<{ estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string; plan?: string; turno?: string; modalidad?: string; comp?: string; page?: string }> }) {
+}: { searchParams: Promise<{ estado?: string; q?: string; plantel?: string; cuatri?: string; tipo?: string | string[]; plan?: string | string[]; turno?: string | string[]; modalidad?: string | string[]; comp?: string; page?: string }> }) {
   const sp = await searchParams;
   const estado = sp.estado ?? "";
   const qstr = sp.q ?? "";
   const plantel = sp.plantel ?? "";
   const cuatri = sp.cuatri ?? "";
-  // Filtros multi-valor: vienen en la URL como lista separada por comas (los valores no
-  // contienen comas). [] = sin filtrar. Carrera/Turno/Tipo/Modalidad son de selección múltiple.
-  const parseMulti = (v?: string) => (v ? v.split(",").filter(Boolean) : []);
+  // Filtros multi-valor: viajan como parámetros REPETIDOS en la URL (?tipo=a&tipo=b).
+  // Un solo valor llega como string y NO se parte por comas: así una carrera cuyo nombre
+  // lleve coma no se rompe en dos valores inexistentes. [] = sin filtrar.
+  const parseMulti = (v?: string | string[]) => (Array.isArray(v) ? v : v ? [v] : []).filter(Boolean);
   const tipo = parseMulti(sp.tipo);
   const plan = parseMulti(sp.plan);
   const turno = parseMulti(sp.turno);
@@ -50,18 +51,23 @@ export default async function AsignacionPage({
 
   // Construye un href de /asignacion conservando los filtros actuales y cambiando uno.
   // Al cambiar cualquier filtro se vuelve a la página 1 (salvo que se cambie 'page').
+  // Los multi-valor se emiten como parámetros repetidos (?tipo=a&tipo=b).
   const href = (cambios: Record<string, string>) => {
-    const base = {
+    const base: Record<string, string | string[]> = {
       ...(estado ? { estado } : {}), ...(qstr ? { q: qstr } : {}), ...(plantel ? { plantel } : {}),
-      ...(cuatri ? { cuatri } : {}), ...(tipo.length ? { tipo: tipo.join(",") } : {}),
-      ...(plan.length ? { plan: plan.join(",") } : {}), ...(turno.length ? { turno: turno.join(",") } : {}),
-      ...(modalidad.length ? { modalidad: modalidad.join(",") } : {}), ...(comp ? { comp } : {}),
+      ...(cuatri ? { cuatri } : {}), ...(tipo.length ? { tipo } : {}),
+      ...(plan.length ? { plan } : {}), ...(turno.length ? { turno } : {}),
+      ...(modalidad.length ? { modalidad } : {}), ...(comp ? { comp } : {}),
       ...(page > 1 ? { page: String(page) } : {}),
     };
     const merged = { ...base, ...cambios };
-    if (!("page" in cambios)) delete (merged as Record<string, string>).page;
-    const limpio = Object.fromEntries(Object.entries(merged).filter(([, val]) => val));
-    const qsParams = new URLSearchParams(limpio).toString();
+    if (!("page" in cambios)) delete merged.page;
+    const usp = new URLSearchParams();
+    for (const [k, v] of Object.entries(merged)) {
+      if (Array.isArray(v)) for (const x of v) { if (x) usp.append(k, x); }
+      else if (v) usp.set(k, v);
+    }
+    const qsParams = usp.toString();
     return `/asignacion${qsParams ? `?${qsParams}` : ""}`;
   };
   const chip = (activo: boolean) =>
@@ -78,7 +84,7 @@ export default async function AsignacionPage({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri,
-            tipo: tipo.join(","), plan: plan.join(","), turno: turno.join(","), modalidad: modalidad.join(","), comp }} />
+            tipo, plan, turno, modalidad, comp }} />
           {sugeridas > 0 && (
             <form action={confirmarSugeridas.bind(null, {
               plantel: plantel || undefined, cuatri: cuatri || undefined,

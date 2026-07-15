@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Panel } from "@/lib/ui";
 import { editarAula, eliminarAula } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { BotonSubmit } from "@/lib/boton-submit";
 
 export type AulaFila = {
   id: number;
@@ -50,9 +51,9 @@ export function TablaAulas({ titulo, lista }: { titulo: string; lista: AulaFila[
                         placeholder="—" className={cell + " w-28"} />
                       <input name="capacidad" type="number" min="1" defaultValue={a.capacidad ?? ""}
                         placeholder="s/cap" className={cell + " w-20"} />
-                      <button className="px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs hover:bg-slate-200">
+                      <BotonSubmit className="px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs hover:bg-slate-200" pendingText="Guardando…">
                         Guardar
-                      </button>
+                      </BotonSubmit>
                     </form>
                   </td>
                   <td className="py-1.5 pr-2 text-slate-500 whitespace-nowrap">

@@ -112,29 +112,37 @@ export function AsignacionFiltros({
 
   // Arma la URL con los filtros actuales + los cambios pedidos. Omite 'page' a
   // propósito: cualquier cambio de filtro debe regresar a la primera página.
-  // Los multi-valor (tipo/plan/turno/modalidad) se serializan como lista con comas.
-  const build = (cambios: Record<string, string>) => {
-    const cur: Record<string, string> = {};
+  // Los multi-valor (tipo/plan/turno/modalidad) viajan como parámetros REPETIDOS
+  // (?tipo=a&tipo=b): así un valor que contenga coma no se parte en dos.
+  // El buscador usa el texto VIVO del input (q), no el último enviado (qstr): si escribes
+  // algo y cambias otro filtro sin pulsar Buscar, lo tecleado se aplica en vez de perderse.
+  type Cambio = string | string[];
+  const build = (cambios: Record<string, Cambio>) => {
+    const cur: Record<string, Cambio> = {};
     if (estado) cur.estado = estado;
     if (plantel) cur.plantel = plantel;
     if (cuatri) cur.cuatri = cuatri;
-    if (tipo.length) cur.tipo = tipo.join(",");
-    if (plan.length) cur.plan = plan.join(",");
-    if (turno.length) cur.turno = turno.join(",");
-    if (modalidad.length) cur.modalidad = modalidad.join(",");
+    if (tipo.length) cur.tipo = tipo;
+    if (plan.length) cur.plan = plan;
+    if (turno.length) cur.turno = turno;
+    if (modalidad.length) cur.modalidad = modalidad;
     if (comp) cur.comp = comp;
-    if (qstr) cur.q = qstr;
+    if (q.trim()) cur.q = q.trim();
     const merged = { ...cur, ...cambios };
-    const limpio = Object.fromEntries(Object.entries(merged).filter(([, v]) => v));
-    const qs = new URLSearchParams(limpio).toString();
+    const usp = new URLSearchParams();
+    for (const [k, v] of Object.entries(merged)) {
+      if (Array.isArray(v)) for (const x of v) { if (x) usp.append(k, x); }
+      else if (v) usp.set(k, v);
+    }
+    const qs = usp.toString();
     return `/asignacion${qs ? `?${qs}` : ""}`;
   };
-  const go = (cambios: Record<string, string>) => router.push(build(cambios));
+  const go = (cambios: Record<string, Cambio>) => router.push(build(cambios));
 
   // Marca/desmarca un valor de un filtro multi-valor y navega (unión). Lista vacía → quita el filtro.
   const toggle = (key: "tipo" | "plan" | "turno" | "modalidad", current: string[], value: string) => {
     const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
-    go({ [key]: next.join(",") });
+    go({ [key]: next });
   };
 
   const sel = "rounded-md border border-slate-200 bg-white text-sm text-slate-700 px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-slate-300 hover:border-slate-300";
@@ -153,15 +161,17 @@ export function AsignacionFiltros({
 
   // Pastillas de filtros activos. En los multi-valor hay UNA pastilla por valor; al quitarla
   // se reconstruye la lista sin ese valor (lista vacía → quita el filtro).
-  const pills: { label: string; clear: Record<string, string> }[] = [];
-  if (plantel) pills.push({ label: plantelCorto(plantel), clear: { plantel: "" } });
-  if (cuatri) pills.push({ label: `Cuatri ${cuatri}`, clear: { cuatri: "" } });
-  for (const t of tipo) pills.push({ label: tipoLabel(t), clear: { tipo: tipo.filter((x) => x !== t).join(",") } });
-  for (const c of plan) pills.push({ label: planCorto(c), clear: { plan: plan.filter((x) => x !== c).join(",") } });
-  for (const t of turno) pills.push({ label: `Turno ${t}`, clear: { turno: turno.filter((x) => x !== t).join(",") } });
-  for (const m of modalidad) pills.push({ label: m, clear: { modalidad: modalidad.filter((x) => x !== m).join(",") } });
-  if (comp) pills.push({ label: comp === "si" ? "Compactadas" : "Sin compactar", clear: { comp: "" } });
-  if (qstr) pills.push({ label: `"${qstr}"`, clear: { q: "" } });
+  // `key` estable por filtro+valor: con key por índice, quitar una pastilla del medio hacía
+  // que React reconciliara las demás por posición.
+  const pills: { key: string; label: string; clear: Record<string, string | string[]> }[] = [];
+  if (plantel) pills.push({ key: "plantel", label: plantelCorto(plantel), clear: { plantel: "" } });
+  if (cuatri) pills.push({ key: "cuatri", label: `Cuatri ${cuatri}`, clear: { cuatri: "" } });
+  for (const t of tipo) pills.push({ key: `tipo:${t}`, label: tipoLabel(t), clear: { tipo: tipo.filter((x) => x !== t) } });
+  for (const c of plan) pills.push({ key: `plan:${c}`, label: planCorto(c), clear: { plan: plan.filter((x) => x !== c) } });
+  for (const t of turno) pills.push({ key: `turno:${t}`, label: `Turno ${t}`, clear: { turno: turno.filter((x) => x !== t) } });
+  for (const m of modalidad) pills.push({ key: `modalidad:${m}`, label: m, clear: { modalidad: modalidad.filter((x) => x !== m) } });
+  if (comp) pills.push({ key: "comp", label: comp === "si" ? "Compactadas" : "Sin compactar", clear: { comp: "" } });
+  if (qstr) pills.push({ key: "q", label: `"${qstr}"`, clear: { q: "" } });
 
   return (
     <div className="space-y-3">
@@ -235,8 +245,8 @@ export function AsignacionFiltros({
       {pills.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-xs text-slate-400">Filtros:</span>
-          {pills.map((p, i) => (
-            <button key={i} type="button" onClick={() => go(p.clear)}
+          {pills.map((p) => (
+            <button key={p.key} type="button" onClick={() => go(p.clear)}
               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-sm hover:bg-slate-200"
               title="Quitar este filtro">
               {p.label} <span className="text-slate-400" aria-hidden>✕</span>

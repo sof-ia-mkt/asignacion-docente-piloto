@@ -13,12 +13,14 @@ export function ExportButtons({
   className = "",
 }: {
   tipo: string;
-  params?: Record<string, string | number | undefined | null>;
+  // Los valores tipo lista (filtros multi-valor) se emiten como parámetros repetidos.
+  params?: Record<string, string | number | string[] | undefined | null>;
   className?: string;
 }) {
   const usp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== null && v !== "") usp.set(k, String(v));
+    if (Array.isArray(v)) for (const x of v) { if (x) usp.append(k, x); }
+    else if (v !== undefined && v !== null && v !== "") usp.set(k, String(v));
   }
   const qs = usp.toString();
   const suffix = qs ? `?${qs}` : "";

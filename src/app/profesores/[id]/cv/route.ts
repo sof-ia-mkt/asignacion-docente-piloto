@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { q } from "@/lib/db";
+import { sesionActual } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,11 @@ function envVar(name: string): string {
 }
 
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+  // Candado propio: los route handlers no pasan por el layout, y este endpoint entrega
+  // datos personales (el CV). Valida contra la base que el usuario siga activo.
+  if (!(await sesionActual())) {
+    return new Response("No autorizado", { status: 401 });
+  }
   const { id } = await ctx.params;
   const pid = Number(id);
   if (!Number.isInteger(pid)) return new Response("ID inválido", { status: 400 });

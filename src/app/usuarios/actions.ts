@@ -1,13 +1,14 @@
 "use server";
 import { revalidatePath } from "next/cache";
-import { sesionActual } from "@/lib/session";
-import { crearUsuario, resetearPassword, fijarActivo, fijarAdmin, tieneAccesoTotal, ROL_DIRECCION_GENERAL, PASSWORD_TEMP } from "@/lib/usuarios-db";
+import { exigirSesionActiva } from "@/lib/session";
+import { crearUsuario, resetearPassword, fijarActivo, fijarAdmin, tieneAccesoTotal, ROL_DIRECCION_GENERAL, generarPasswordTemporal } from "@/lib/usuarios-db";
 
 // Candado de servidor (no solo de UI): toda acción de administración exige acceso total
-// (admin clásico o Dirección General).
+// (admin clásico o Dirección General). Usa exigirSesionActiva para que un admin con la
+// contraseña temporal pendiente tampoco pueda administrar vía POST directo.
 async function exigirAdmin() {
-  const u = await sesionActual();
-  if (!u || !tieneAccesoTotal(u)) throw new Error("No autorizado: solo administradores.");
+  const u = await exigirSesionActiva();
+  if (!tieneAccesoTotal(u)) throw new Error("No autorizado: solo administradores.");
   return u;
 }
 
@@ -29,8 +30,10 @@ export async function crearUsuarioAccion(_prev: CrearUsuarioState, fd: FormData)
   if (!ROLES_VALIDOS.has(rolRaw)) return { error: "Rol inválido." };
   const rol = rolRaw || null;
 
+  // Contraseña temporal aleatoria por usuario: se muestra UNA sola vez en el resultado.
+  const temporal = generarPasswordTemporal();
   try {
-    await crearUsuario({ usuario, nombre, correo, rol, carrera, esAdmin, password: PASSWORD_TEMP });
+    await crearUsuario({ usuario, nombre, correo, rol, carrera, esAdmin, password: temporal });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes("duplicate") || msg.includes("unique")) return { error: `El usuario "${usuario}" ya existe.` };
@@ -38,13 +41,24 @@ export async function crearUsuarioAccion(_prev: CrearUsuarioState, fd: FormData)
   }
   revalidatePath("/usuarios");
   revalidatePath("/", "layout");
-  return { ok: `Usuario "${usuario}" creado. Contraseña temporal: ${PASSWORD_TEMP}` };
+  return { ok: `Usuario "${usuario}" creado. Contraseña temporal (cópiala AHORA, no se vuelve a mostrar): ${temporal}` };
 }
 
-export async function resetearPasswordAccion(id: number) {
+export type ResetPasswordState = { ok?: string; error?: string };
+
+// Devuelve la temporal generada para mostrarla UNA vez al admin que hizo el reseteo.
+// (Los params prev/fd los exige la firma de useActionState; aquí no se usan.)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function resetearPasswordAccion(id: number, _prev: ResetPasswordState, _fd: FormData): Promise<ResetPasswordState> {
   await exigirAdmin();
-  await resetearPassword(id, PASSWORD_TEMP);
+  const temporal = generarPasswordTemporal();
+  try {
+    await resetearPassword(id, temporal);
+  } catch {
+    return { error: "No se pudo resetear la contraseña." };
+  }
   revalidatePath("/usuarios");
+  return { ok: temporal };
 }
 
 export async function fijarActivoAccion(id: number, activo: boolean) {

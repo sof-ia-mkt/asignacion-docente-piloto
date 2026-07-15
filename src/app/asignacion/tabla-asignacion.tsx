@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Estado, Fuerza, planCorto, plantelCorto } from "@/lib/ui";
 import { marcarNoApertura, reactivarSlot } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { BotonSubmit } from "@/lib/boton-submit";
 import { CeldaMateria, CeldaTipo } from "./celdas-editables";
 
 export type SlotFila = {
@@ -105,9 +106,9 @@ export function TablaAsignacion({
                   </Link>
                   {parked ? (
                     <form action={reactivarSlot.bind(null, s.id)}>
-                      <button className="inline-block px-2.5 py-1 rounded-md border border-green-300 bg-green-50 text-xs text-green-700 hover:bg-green-100 whitespace-nowrap">
+                      <BotonSubmit className="inline-block px-2.5 py-1 rounded-md border border-green-300 bg-green-50 text-xs text-green-700 hover:bg-green-100 whitespace-nowrap">
                         Reactivar
-                      </button>
+                      </BotonSubmit>
                     </form>
                   ) : (
                     <form action={marcarNoApertura.bind(null, s.id)}>

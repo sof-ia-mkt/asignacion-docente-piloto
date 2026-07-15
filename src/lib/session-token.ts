@@ -5,17 +5,16 @@
 // código corre tanto en el middleware (src/proxy.ts, runtime edge) como en el servidor
 // (src/lib/session.ts, runtime node). El secreto vive en AUTH_SECRET.
 
-// El secreto firma las sesiones. En producción es OBLIGATORIO: si falta, NO usamos una llave
-// por defecto pública (cualquiera podría falsificar una sesión). En desarrollo se permite un
-// fallback para no estorbar el trabajo local. Se resuelve de forma perezosa (al firmar/verificar,
-// no al cargar el módulo) para no tronar el build, donde la variable puede no estar presente.
+// El secreto firma las sesiones. Es OBLIGATORIO en TODO entorno: un fallback conocido
+// (aunque fuera "solo de desarrollo") permitiría falsificar una sesión de admin en cualquier
+// despliegue donde NODE_ENV no sea exactamente 'production'. Genera uno con
+// `openssl rand -hex 32` y ponlo en .env.local / variables de entorno (ver .env.example).
+// Se resuelve de forma perezosa (al firmar/verificar, no al cargar el módulo) para no
+// tronar el build, donde la variable puede no estar presente.
 function getSecreto(): string {
   const s = process.env.AUTH_SECRET;
   if (s) return s;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("AUTH_SECRET no está configurada. Es obligatoria en producción para firmar las sesiones.");
-  }
-  return "cenyca-piloto-secreto-de-desarrollo";
+  throw new Error("AUTH_SECRET no está configurada. Es obligatoria para firmar las sesiones (openssl rand -hex 32).");
 }
 
 type Payload = { u: string; exp: number };

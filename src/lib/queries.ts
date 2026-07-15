@@ -66,7 +66,7 @@ export async function getProfesores(cv: "" | "cv" | "sincv" = "", coordinador = 
             (select count(*) from materia_candidatos mc where mc.profesor_id=p.id)::int n_cand,
             (select count(distinct coalesce('c'||s.compactacion_id::text, 's'||s.id::text))
                from asignaciones a join slots s on s.id=a.slot_id
-               where a.profesor_id=p.id and s.ciclo_id=${act.id})::int n_asig,
+               where a.profesor_id=p.id and s.ciclo_id=${act.id} and not s.no_apertura)::int n_asig,
             (select string_agg(distinct pl, ',') from (
                select s.plantel pl from slots s where ${sqlEnHistorial(hist)} and s.docente_id = p.id
                union
@@ -148,6 +148,7 @@ export async function getProfesor(id: number) {
                left join grupos g2 on g2.id = s2.grupo_id
               where a2.profesor_id = $1
                 and s2.ciclo_id = ${act.id} and s2.id <> s.id
+                and not s2.no_apertura
                 and s2.dia = s.dia and s2.hora_inicio < s.hora_fin and s.hora_inicio < s2.hora_fin
                 and ${sqlMismoPeriodo("s.tipo", "s2.tipo")}
               order by s2.hora_inicio limit 1) choque
@@ -360,7 +361,13 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 25) {
   if (f.estado === "no_apertura") where.push("s.no_apertura");
   else where.push("not s.no_apertura");
   // Paginación: limit por página + offset según la página pedida (1-based).
-  const page = Math.max(1, f.page ?? 1);
+  // El total se cuenta ANTES para poder acotar la página al rango real: con ?page=9999
+  // en la URL, antes se mostraba una lista vacía y un "Mostrando 199981–199980" sin sentido.
+  const [tot] = await q<{ n: number }>(
+    "select count(*)::int n from slots s left join materias m on m.id=s.materia_id left join grupos g on g.id=s.grupo_id left join asignaciones a on a.slot_id=s.id where " + where.join(" and "),
+    params);
+  const pages = Math.max(1, Math.ceil(tot.n / limit));
+  const page = Math.min(Math.max(1, f.page ?? 1), pages);
   const offset = (page - 1) * limit;
   params.push(limit);
   const pLimit = params.length;
@@ -386,10 +393,6 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 25) {
       where ${where.join(" and ")}
       order by (a.profesor_id is null) desc, m.nombre, g.clave, s.id
       limit $${pLimit} offset $${pOffset}`, params);
-  const [tot] = await q<{ n: number }>(
-    "select count(*)::int n from slots s left join materias m on m.id=s.materia_id left join grupos g on g.id=s.grupo_id left join asignaciones a on a.slot_id=s.id where " + where.join(" and "),
-    params.slice(0, pLimit - 1));
-  const pages = Math.max(1, Math.ceil(tot.n / limit));
   return { rows, total: tot.n, page, pages, limit };
 }
 
@@ -457,8 +460,9 @@ export async function getSlot(id: number) {
     `select mc.profesor_id, pr.nombre, sum(mc.puntaje)::int puntaje,
             string_agg(distinct mc.fuente, ',') fuentes,
             string_agg(mc.razon, ' | ' order by mc.puntaje desc) razon,
-            (select count(*) from asignaciones a join slots s3 on s3.id = a.slot_id
-               where a.profesor_id = mc.profesor_id and s3.ciclo_id = ${act.id})::int carga,
+            (select count(distinct coalesce('c'||s3.compactacion_id::text, 's'||s3.id::text))
+               from asignaciones a join slots s3 on s3.id = a.slot_id
+               where a.profesor_id = mc.profesor_id and s3.ciclo_id = ${act.id} and not s3.no_apertura)::int carga,
             (select string_agg(distinct s2.plantel, ',')
                from slots s2
               where ${sqlEnHistorial(hist, "s2.ciclo_id")} and s2.docente_id = mc.profesor_id
@@ -470,6 +474,7 @@ export async function getSlot(id: number) {
                left join grupos g2 on g2.id = s2.grupo_id
               where a2.profesor_id = mc.profesor_id
                 and s2.ciclo_id = ${act.id} and s2.id <> $3
+                and not s2.no_apertura
                 and s2.dia = $4 and s2.hora_inicio < $6 and $5 < s2.hora_fin
                 and ${sqlMismoPeriodo("$7", "s2.tipo")}
               order by s2.hora_inicio limit 1) choque
@@ -497,6 +502,7 @@ export async function getSlot(id: number) {
               exists(
                 select 1 from slots s2
                  where s2.ciclo_id = ${act.id} and s2.aula_id = au.id and s2.id <> $1
+                   and not s2.no_apertura
                    and s2.dia = $2 and s2.hora_inicio < $4 and $3 < s2.hora_fin
                    and ${sqlMismoPeriodo("$7", "s2.tipo")}
               ) ocupada
@@ -527,8 +533,9 @@ export async function buscarProfesores(
     recomendado: boolean; choque: string | null;
   }>(
     `select p.id, p.nombre, p.area_cv,
-            (select count(*) from asignaciones a join slots s3 on s3.id = a.slot_id
-               where a.profesor_id = p.id and s3.ciclo_id = ${act.id})::int carga,
+            (select count(distinct coalesce('c'||s3.compactacion_id::text, 's'||s3.id::text))
+               from asignaciones a join slots s3 on s3.id = a.slot_id
+               where a.profesor_id = p.id and s3.ciclo_id = ${act.id} and not s3.no_apertura)::int carga,
             exists(
               select 1 from materia_candidatos mc
                where mc.profesor_id = p.id and mc.materia_id = $2 and mc.puntaje >= 25
@@ -540,6 +547,7 @@ export async function buscarProfesores(
                left join grupos g2 on g2.id = s2.grupo_id
               where a2.profesor_id = p.id
                 and s2.ciclo_id = ${act.id} and s2.id <> $5
+                and not s2.no_apertura
                 and s2.dia = $6 and s2.hora_inicio < $8 and $7 < s2.hora_fin
                 and ${sqlMismoPeriodo("$9", "s2.tipo")}
               order by s2.hora_inicio limit 1) choque
@@ -972,8 +980,9 @@ export async function getDocentesParaMateria(materiaId: number): Promise<Docente
   const act = await cicloActivo();
   return q<DocenteCandidato>(
     `select mc.profesor_id, pr.nombre, sum(mc.puntaje)::int puntaje,
-            (select count(*) from asignaciones a join slots s3 on s3.id=a.slot_id
-               where a.profesor_id=mc.profesor_id and s3.ciclo_id=${act.id})::int carga
+            (select count(distinct coalesce('c'||s3.compactacion_id::text, 's'||s3.id::text))
+               from asignaciones a join slots s3 on s3.id=a.slot_id
+               where a.profesor_id=mc.profesor_id and s3.ciclo_id=${act.id} and not s3.no_apertura)::int carga
        from materia_candidatos mc join profesores pr on pr.id=mc.profesor_id
       where mc.materia_id=$1 and mc.puntaje >= 25 and pr.nombre <> all($2)
       group by mc.profesor_id, pr.nombre

@@ -104,7 +104,8 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
 
   const fechaCorta = (s: string) => {
     const d = new Date(s);
-    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" });
+    // Zona horaria fija (el servidor corre en UTC): a las 11 pm de Tijuana debe decir HOY, no mañana.
+    return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Tijuana" });
   };
 
   const stat = (n: number, label: string, color: string) => (
@@ -224,8 +225,8 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {asignaciones.map((a, i) => (
-                  <tr key={i}>
+                {asignaciones.map((a) => (
+                  <tr key={a.slot_id}>
                     <td className="py-1.5 pr-2 tabular-nums text-slate-500">{a.id_excel ?? "—"}</td>
                     <td className="py-1.5 pr-2 text-slate-800">{a.materia}</td>
                     <td className="py-1.5 pr-2"><TipoClase t={a.tipo} /></td>

@@ -3,8 +3,10 @@ import { notFound } from "next/navigation";
 import { getSlot, buscarProfesores } from "@/lib/queries";
 import { cicloActivo } from "@/lib/ciclo";
 import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge, esAsincronica } from "@/lib/ui";
-import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, editarHorario, eliminarSlot, marcarNoApertura, reactivarSlot } from "@/app/actions";
+import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, eliminarSlot, marcarNoApertura, reactivarSlot } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
+import { BotonSubmit } from "@/lib/boton-submit";
+import { FormHorario } from "./form-horario";
 
 const DIAS = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO", "N/A"];
 
@@ -73,9 +75,9 @@ export default async function SlotPage({
             Está oculta de la lista de asignación y no cuenta en los totales ni en las alertas.
           </p>
           <form action={reactivarSlot.bind(null, slotId)}>
-            <button className="px-3 py-1.5 rounded-md border border-green-300 bg-green-100 text-green-800 text-sm whitespace-nowrap hover:bg-green-200">
+            <BotonSubmit className="px-3 py-1.5 rounded-md border border-green-300 bg-green-100 text-green-800 text-sm whitespace-nowrap hover:bg-green-200">
               Reactivar
-            </button>
+            </BotonSubmit>
           </form>
         </div>
       )}
@@ -148,7 +150,7 @@ export default async function SlotPage({
             <div className="mt-3 flex gap-2">
               {slot.estado === "sugerida" && (
                 <form action={confirmar.bind(null, slotId, undefined)}>
-                  <button className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm">Aceptar sugerencia</button>
+                  <BotonSubmit className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm" pendingText="Aceptando…">Aceptar sugerencia</BotonSubmit>
                 </form>
               )}
               <form action={quitarAsignacion.bind(null, slotId, slot.docente_id ?? undefined)}>
@@ -168,26 +170,7 @@ export default async function SlotPage({
         <p className="mt-0.5 text-xs text-slate-400">
           Corrige o completa el horario de esta materia. Muchas vienen sin horario del Excel.
         </p>
-        <form action={editarHorario.bind(null, slotId)} className="mt-3 flex flex-wrap items-end gap-2">
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Día</label>
-            <select name="dia" defaultValue={slot.dia ?? ""} className="px-3 py-1.5 rounded-md border border-slate-300 text-sm">
-              <option value="">— sin día —</option>
-              {DIAS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Hora inicio</label>
-            <input name="hora_inicio" defaultValue={slot.hora_inicio ?? ""} placeholder="07:00"
-              className="px-3 py-1.5 rounded-md border border-slate-300 text-sm w-24" />
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Hora fin</label>
-            <input name="hora_fin" defaultValue={slot.hora_fin ?? ""} placeholder="09:00"
-              className="px-3 py-1.5 rounded-md border border-slate-300 text-sm w-24" />
-          </div>
-          <button className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm">Guardar horario</button>
-        </form>
+        <FormHorario slotId={slotId} dia={slot.dia} horaInicio={slot.hora_inicio} horaFin={slot.hora_fin} dias={DIAS} />
         <p className="mt-2 text-xs text-slate-400">Formato de hora: HH:MM (24h). Déjalo vacío si aún no hay horario.</p>
       </div>
 
@@ -240,11 +223,11 @@ export default async function SlotPage({
                       <td className="py-1.5 text-right">
                         {slot.aula_id === au.id ? (
                           <form action={quitarAula.bind(null, slotId)}>
-                            <button className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-xs hover:bg-slate-50">Quitar</button>
+                            <BotonSubmit className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-xs hover:bg-slate-50">Quitar</BotonSubmit>
                           </form>
                         ) : (
                           <form action={asignarAula.bind(null, slotId, au.id)}>
-                            <button className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs">Asignar</button>
+                            <BotonSubmit className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs">Asignar</BotonSubmit>
                           </form>
                         )}
                       </td>

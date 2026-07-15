@@ -5,10 +5,17 @@
 
 import { getReport } from "@/lib/reports";
 import { buildWorkbook, type Sheet } from "@/lib/xlsx";
+import { sesionActual } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, ctx: { params: Promise<{ tipo: string }> }) {
+  // Candado propio (defensa en profundidad): los route handlers no pasan por el layout,
+  // así que si el matcher del middleware cambiara, este endpoint filtraría toda la data.
+  // Además valida contra la base que el usuario siga ACTIVO, no solo la firma del token.
+  if (!(await sesionActual())) {
+    return new Response("No autorizado", { status: 401 });
+  }
   const { tipo } = await ctx.params;
   const params = new URL(request.url).searchParams;
 

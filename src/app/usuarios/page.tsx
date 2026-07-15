@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import { sesionActual } from "@/lib/session";
-import { listarUsuarios, tieneAccesoTotal, ROL_DIRECCION_GENERAL, PASSWORD_TEMP } from "@/lib/usuarios-db";
+import { listarUsuarios, tieneAccesoTotal, ROL_DIRECCION_GENERAL } from "@/lib/usuarios-db";
 import { Panel } from "@/lib/ui";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { NuevoUsuarioForm } from "./form";
+import { BotonResetPassword } from "./boton-reset-password";
 import {
-  resetearPasswordAccion,
   fijarActivoAccion,
   fijarAdminAccion,
 } from "./actions";
@@ -84,13 +84,7 @@ export default async function UsuariosPage() {
                     </td>
                     <td className="py-2 pl-3">
                       <div className="flex justify-end items-center gap-3 whitespace-nowrap">
-                        <form action={resetearPasswordAccion.bind(null, u.id)}>
-                          <ConfirmButton
-                            message={`¿Resetear la contraseña de ${u.nombre} a la temporal (${PASSWORD_TEMP})? Tendrá que volver a entrar con esa contraseña.`}
-                            className="text-blue-700 hover:underline text-xs">
-                            Resetear contraseña
-                          </ConfirmButton>
-                        </form>
+                        <BotonResetPassword id={u.id} nombre={u.nombre} />
 
                         {!soyYo && u.rol !== ROL_DIRECCION_GENERAL && (
                           <form action={fijarAdminAccion.bind(null, u.id, !u.es_admin)}>
