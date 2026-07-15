@@ -282,10 +282,16 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
 // Solo cambia el estado (sugerida→confirmada), no el docente, así que el diagnóstico no cambia.
 export async function confirmar(slotId: number, profesorId?: number) {
   await exigirSesionActiva();
+  const act = await cicloActivo();
   const antes = await snapAsignacion(slotId);   // foto del antes (estado previo)
-  // Candado de integridad (no solo UI): no se puede "confirmar" una clase sin docente.
+  // Candado de integridad (no solo UI): no se puede "confirmar" una clase sin docente,
+  // ni una clase fuera del ciclo activo (misma regla que asignar/editar: pantallas viejas
+  // apuntando a otro ciclo no deben mutar nada).
   const upd = await q<{ slot_id: number }>(
-    "update asignaciones set estado='confirmada', automatica=false where slot_id=$1 and profesor_id is not null returning slot_id", [slotId]);
+    `update asignaciones set estado='confirmada', automatica=false
+      where slot_id=$1 and profesor_id is not null
+        and exists (select 1 from slots s where s.id=$1 and s.ciclo_id=${act.id})
+      returning slot_id`, [slotId]);
   if (upd.length) {
     const [info] = await q<{ materia: string | null; grupo: string | null; profesor: string | null }>(
       `select m.nombre materia, g.clave grupo, p.nombre profesor
@@ -365,9 +371,13 @@ export async function confirmarSugeridas(
 // el recálculo levanta la alerta choque_aula (pero el aula se asigna igual: lo decide coordinación).
 export async function asignarAula(slotId: number, aulaId: number) {
   await exigirSesionActiva();
+  const act = await cicloActivo();
   const antes = await snapSlotAula(slotId);   // foto del aula previa (para deshacer)
   // aula_manual = true: el motor (asignar.mjs) ya no recalcula ni pisa este salón.
-  await q("update slots set aula_id = $1, aula_manual = true where id = $2", [aulaId, slotId]);
+  // Candado de ciclo (misma regla que asignar/editar): solo clases del ciclo activo.
+  const upd = await q<{ id: number }>(
+    `update slots set aula_id = $1, aula_manual = true where id = $2 and ciclo_id=${act.id} returning id`, [aulaId, slotId]);
+  if (!upd.length) return;
   const [info] = await q<{ materia: string | null; grupo: string | null; aula: string | null }>(
     `select m.nombre materia, g.clave grupo, au.clave aula
        from slots s
@@ -402,7 +412,11 @@ export async function quitarAula(slotId: number) {
        left join aulas au on au.id = s.aula_id
       where s.id = $1`, [slotId]);
   const antes = await snapSlotAula(slotId);   // foto del aula previa (para deshacer)
-  await q("update slots set aula_id = null, aula_manual = false where id = $1", [slotId]);
+  // Candado de ciclo (misma regla que asignar/editar): solo clases del ciclo activo.
+  const act = await cicloActivo();
+  const upd = await q<{ id: number }>(
+    `update slots set aula_id = null, aula_manual = false where id = $1 and ciclo_id=${act.id} returning id`, [slotId]);
+  if (!upd.length) return;
   await registrarCambio({
     entidad: "clase",
     entidadId: slotId,
@@ -435,6 +449,9 @@ export async function quitarAsignacion(slotId: number, profesorId?: number) {
   const act = await cicloActivo();
   const [sc] = await q<{ compactacion_id: number | null }>(
     `select compactacion_id from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
+  // Candado de ciclo: si la clase no es del ciclo activo (pantalla vieja apuntando a otro
+  // ciclo), no se muta nada — misma regla que asignar/editar.
+  if (!sc) return;
   const objetivos = sc?.compactacion_id
     ? (await q<{ id: number }>(`select id from slots where compactacion_id=$1 and ciclo_id=${act.id}`, [sc.compactacion_id])).map((r) => r.id)
     : [slotId];
