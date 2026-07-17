@@ -15,18 +15,20 @@ export function NuevaMateriaForm({
   materias,
   grupos,
   datosGrupo,
+  abrirGrupo = false,
 }: {
   planteles: { plantel: string }[];
   materias: { id: number; nombre: string }[];
   grupos: { id: number; clave: string }[];
   datosGrupo: DatosNuevoGrupo;
+  abrirGrupo?: boolean;
 }) {
   const [state, action, pending] = useActionState<CrearSlotState, FormData>(crearSlot, {});
   // El grupo se elige del catálogo (select estricto, ya no se teclea la clave). Si el grupo
   // no existe, el constructor de abajo lo crea y aquí queda seleccionado automáticamente.
   const [listaGrupos, setListaGrupos] = useState(grupos);
   const [grupoSel, setGrupoSel] = useState("");
-  const [creandoGrupo, setCreandoGrupo] = useState(false);
+  const [creandoGrupo, setCreandoGrupo] = useState(abrirGrupo);
   // Regla de los datos (sin excepciones): VIRTUAL ⇔ ASINCRÓNICA; el resto, PRESENCIAL.
   // La modalidad se DERIVA del tipo (no se elige): así es imposible capturar una combinación
   // que el servidor rechazaría. Con VIRTUAL, además, el horario desaparece del formulario.

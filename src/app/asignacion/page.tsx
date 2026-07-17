@@ -101,9 +101,18 @@ export default async function AsignacionPage({
             </form>
           )}
           {act.estado === "planeacion" && (
-            <Link href="/asignacion/nueva" className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">
-              + Nueva materia por grupo
-            </Link>
+            <>
+              {/* Acceso directo al constructor de grupos (vive dentro de "Nueva materia por
+                  grupo", pero como tarea propia nadie lo buscaría ahí): abre el form con el
+                  constructor ya desplegado. */}
+              <Link href="/asignacion/nueva?grupo=nuevo"
+                className="px-3 py-1.5 rounded-md border border-blue-300 bg-blue-50 text-blue-800 text-sm whitespace-nowrap hover:bg-blue-100">
+                + Nuevo grupo
+              </Link>
+              <Link href="/asignacion/nueva" className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">
+                + Nueva materia por grupo
+              </Link>
+            </>
           )}
         </div>
       </div>
