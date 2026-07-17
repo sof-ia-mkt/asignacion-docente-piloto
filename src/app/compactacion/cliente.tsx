@@ -37,13 +37,14 @@ const POR_PAGINA = 20;   // candidatas mostradas de inicio (cada "Mostrar más" 
 type SlotInfo = CompactGrupo & { materia_id: number; materia: string; plantel: string; tipo: string };
 
 export function CompactacionCliente({
-  candidatos, compactaciones, docentesPorMateria, libresPorClave, materias,
+  candidatos, compactaciones, docentesPorMateria, libresPorClave, materias, soloLectura = false,
 }: {
   candidatos: CompactCandidato[];
   compactaciones: CompactacionActiva[];
   docentesPorMateria: Record<number, DocenteCandidato[]>;
   libresPorClave: Record<string, CompactGrupo[]>;
   materias: { id: number; nombre: string }[];
+  soloLectura?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -306,7 +307,7 @@ export function CompactacionCliente({
           </h2>
           <div className="space-y-2">
             {compFiltradas.map((c) => (
-              <TarjetaCompactada key={c.id} c={c} libres={libresPorClave[`${c.materia_id}|${c.plantel}|${c.tipo}`] ?? []} materias={materias} />
+              <TarjetaCompactada key={c.id} c={c} libres={libresPorClave[`${c.materia_id}|${c.plantel}|${c.tipo}`] ?? []} materias={materias} soloLectura={soloLectura} />
             ))}
           </div>
         </section>
@@ -545,7 +546,7 @@ export function CompactacionCliente({
 // reversibles — Separar, Editar razón y Agregar más grupos (de la misma materia y plantel).
 const TIPOS_CLASE_UI = ["DISCIPLINAR", "MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "VIRTUAL"];
 
-function TarjetaCompactada({ c, libres, materias }: { c: CompactacionActiva; libres: CompactGrupo[]; materias: { id: number; nombre: string }[] }) {
+function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: CompactacionActiva; libres: CompactGrupo[]; materias: { id: number; nombre: string }[]; soloLectura?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -666,7 +667,7 @@ function TarjetaCompactada({ c, libres, materias }: { c: CompactacionActiva; lib
         </span>
         <span className="ml-auto text-xs text-slate-400">{c.grupos.length} grupos</span>
         <div className="flex items-center gap-1.5">
-          <button type="button" onClick={() => { setEditando((v) => !v); setAgregando(false); setRazonDraft(c.razon ?? ""); }}
+          <button type="button" onClick={() => { setEditando((v) => !v); setAgregando(false); setOtraMateria(false); setRazonDraft(c.razon ?? ""); }}
             disabled={pending}
             className="px-2 py-1 rounded-md border border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60">
             {editando ? "Cerrar" : "Editar razón"}
@@ -678,11 +679,13 @@ function TarjetaCompactada({ c, libres, materias }: { c: CompactacionActiva; lib
               {agregando ? "Cerrar" : `Agregar grupos (${libres.length})`}
             </button>
           )}
-          <button type="button" onClick={() => { setOtraMateria((v) => !v); setEditando(false); setAgregando(false); setError(null); }}
-            disabled={pending}
-            className="px-2 py-1 rounded-md border border-violet-300 bg-white text-xs text-violet-800 hover:bg-violet-50 disabled:opacity-60">
-            {otraMateria ? "Cerrar" : "Otra materia"}
-          </button>
+          {!soloLectura && (
+            <button type="button" onClick={() => { setOtraMateria((v) => !v); setEditando(false); setAgregando(false); setError(null); }}
+              disabled={pending}
+              className="px-2 py-1 rounded-md border border-violet-300 bg-white text-xs text-violet-800 hover:bg-violet-50 disabled:opacity-60">
+              {otraMateria ? "Cerrar" : "Otra materia"}
+            </button>
+          )}
           <button type="button" onClick={ejecutarSeparar} disabled={pending}
             className="px-2 py-1 rounded-md border border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60">
             Separar

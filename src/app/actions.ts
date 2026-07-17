@@ -959,13 +959,18 @@ export async function editarHorario(slotId: number, _prev: EditarHorarioState, f
   // empalmes reales de docente y de aula. Se rechaza en la captura.
   if (hi && hf && hi >= hf)
     return { error: `El horario está invertido o vacío (${hi}–${hf}): la hora de inicio debe ser antes que la de fin.` };
+  const [info] = await q<{ materia: string | null; grupo: string | null; tipo: string | null; modalidad: string | null }>(
+    `select m.nombre materia, g.clave grupo, s.tipo, s.modalidad from slots s
+       left join materias m on m.id = s.materia_id
+       left join grupos g on g.id = s.grupo_id where s.id = $1 and s.ciclo_id = ${act.id}`, [slotId]);
+  if (!info) return { error: "No se encontró la clase en el ciclo activo." };
+  // Coherencia VIRTUAL (misma regla que al crear): las virtuales/asincrónicas no llevan
+  // día ni hora — sin este candado, la regla se podía romper EDITANDO aunque no creando.
+  if ((dia || hi || hf) && (info.tipo === "VIRTUAL" || (info.modalidad ?? "").toUpperCase().includes("ASINCR")))
+    return { error: "Esta clase es VIRTUAL (asincrónica): no lleva día ni hora, como todas las demás virtuales. Si de verdad tendrá horario fijo, primero cámbiale el tipo." };
   const antes = await snapSlotHorario(slotId);   // foto del horario previo (para deshacer)
   await q(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id=$4 and ciclo_id=${act.id}`,
     [dia, hi, hf, slotId]);
-  const [info] = await q<{ materia: string | null; grupo: string | null }>(
-    `select m.nombre materia, g.clave grupo from slots s
-       left join materias m on m.id = s.materia_id
-       left join grupos g on g.id = s.grupo_id where s.id = $1`, [slotId]);
   const horarioTxt = dia && hi && hf ? `${dia} ${hi}-${hf}` : "sin horario";
   await registrarCambio({
     entidad: "clase",
@@ -1032,29 +1037,56 @@ export async function editarTipoSlot(slotId: number, tipo: string): Promise<Edit
   const bloqueo = motivoCicloSoloLectura(act);   // candado: historial es solo lectura
   if (bloqueo) return { error: bloqueo };
   if (!TIPOS_CLASE.includes(tipo)) return { error: "Tipo de clase no válido." };
-  const [info] = await q<{ materia: string | null; grupo: string | null; tipo: string | null }>(
-    `select m.nombre materia, g.clave grupo, s.tipo from slots s
+  const [info] = await q<{ materia: string | null; grupo: string | null; tipo: string | null; modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null }>(
+    `select m.nombre materia, g.clave grupo, s.tipo, s.modalidad, s.dia, s.hora_inicio, s.hora_fin from slots s
        left join materias m on m.id = s.materia_id
        left join grupos g on g.id = s.grupo_id where s.id = $1 and s.ciclo_id = ${act.id}`, [slotId]);
   if (!info) return { error: "No se encontró la clase en el ciclo activo." };
   if (info.tipo === tipo) return { ok: "Sin cambios." };
 
-  const antes = await snapSlotTipo(slotId);   // foto SOLO del campo que esta acción toca
-  await q(`update slots set tipo=$1 where id=$2 and ciclo_id=${act.id}`, [tipo, slotId]);
+  // Coherencia VIRTUAL ⇔ ASINCRÓNICA (regla sin excepciones en los datos): cambiar el tipo
+  // hacia/desde VIRTUAL ajusta también la modalidad — y al volverse virtual, quita el horario
+  // (las virtuales no llevan día ni hora). La foto abarca TODOS los campos tocados, para que
+  // el deshacer restaure la clase completa y no deje una combinación imposible.
+  const seraVirtual = tipo === "VIRTUAL";
+  const eraVirtual = info.tipo === "VIRTUAL" || (info.modalidad ?? "").toUpperCase().includes("ASINCR");
+  const cambiaNaturaleza = seraVirtual !== eraVirtual;
+  let antes: Snap, despues: Snap, avisoExtra = "";
+  if (cambiaNaturaleza) {
+    antes = {
+      kind: "row", tabla: "slots", clave: { id: slotId },
+      campos: { tipo: info.tipo, modalidad: info.modalidad, dia: info.dia, hora_inicio: info.hora_inicio, hora_fin: info.hora_fin },
+    };
+    if (seraVirtual) {
+      await q(`update slots set tipo=$1, modalidad='ASINCRÓNICA', dia=null, hora_inicio=null, hora_fin=null where id=$2 and ciclo_id=${act.id}`, [tipo, slotId]);
+      despues = { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { tipo, modalidad: "ASINCRÓNICA", dia: null, hora_inicio: null, hora_fin: null } };
+      avisoExtra = info.dia || info.hora_inicio
+        ? " La clase pasó a ASINCRÓNICA y su horario se quitó (las virtuales no llevan día ni hora)."
+        : " La clase pasó a ASINCRÓNICA (las virtuales no llevan horario).";
+    } else {
+      await q(`update slots set tipo=$1, modalidad='PRESENCIAL' where id=$2 and ciclo_id=${act.id}`, [tipo, slotId]);
+      despues = { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { tipo, modalidad: "PRESENCIAL", dia: info.dia, hora_inicio: info.hora_inicio, hora_fin: info.hora_fin } };
+      avisoExtra = " La clase pasó a PRESENCIAL: captúrale día, hora y aula.";
+    }
+  } else {
+    antes = await snapSlotTipo(slotId);   // foto SOLO del campo que esta acción toca
+    await q(`update slots set tipo=$1 where id=$2 and ciclo_id=${act.id}`, [tipo, slotId]);
+    despues = { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { tipo } };
+  }
   await registrarCambio({
     entidad: "clase",
     entidadId: slotId,
     accion: "editó",
-    descripcion: `Cambió el tipo de "${info.materia ?? "clase"}"${info.grupo ? ` · ${info.grupo}` : ""}: ${info.tipo ?? "sin tipo"} → ${tipo}`,
+    descripcion: `Cambió el tipo de "${info.materia ?? "clase"}"${info.grupo ? ` · ${info.grupo}` : ""}: ${info.tipo ?? "sin tipo"} → ${tipo}${avisoExtra}`,
     antes,
-    despues: { kind: "row", tabla: "slots", clave: { id: slotId }, campos: { tipo } },
+    despues,
   });
   await recalcularAlertas();   // el tipo participa en la detección de choques (módulos secuenciales)
   revalidatePath(`/asignacion/${slotId}`);
   revalidatePath("/asignacion");
   revalidatePath("/alertas");
   revalidatePath("/");
-  return { ok: `Tipo cambiado a ${tipo}.` };
+  return { ok: `Tipo cambiado a ${tipo}.${avisoExtra}` };
 }
 
 // Corrige el PLANTEL de una clase (dato mal cargado del Excel). Select estricto: solo se
@@ -1099,6 +1131,21 @@ export async function editarPlantelSlot(slotId: number, plantel: string): Promis
   return { ok: `Plantel cambiado a ${p}.` };
 }
 
+// ¿El grupo (por su clave) pertenece al plantel dado? La clave termina en el código de campus;
+// se valida contra los códigos con uso REAL en ese plantel (tolera variantes históricas como
+// TEC/TC en Tecate). Devuelve el mensaje de error, o null si es coherente / no hay referencia.
+async function validarGrupoDelPlantel(claveGrupo: string, plantel: string | null): Promise<string | null> {
+  if (!plantel) return null;
+  const codigos = await q<{ campus: string }>(
+    `select distinct (string_to_array(g.clave,'_'))[array_length(string_to_array(g.clave,'_'),1)] campus
+       from slots s join grupos g on g.id = s.grupo_id
+      where s.plantel = $1 and g.clave is not null`, [plantel]);
+  if (!codigos.length) return null;   // plantel sin grupos aún: sin referencia para validar
+  const campusGrupo = claveGrupo.split("_").at(-1) ?? "";
+  if (codigos.some((c) => c.campus === campusGrupo)) return null;
+  return `El grupo ${claveGrupo} parece de OTRO plantel: su clave termina en "${campusGrupo}" y los grupos de ${plantel} terminan en ${codigos.map((c) => c.campus).join("/")}. Elige un grupo del mismo plantel (o créalo con el constructor).`;
+}
+
 // Re-apunta la clase a OTRO grupo del catálogo (select estricto, sin texto libre).
 // Anti-dedazo: si el grupo destino ya lleva esta misma materia y tipo en el ciclo, se
 // rechaza (sería un duplicado casi seguro). Bloqueado en compactadas: los grupos de una
@@ -1112,14 +1159,20 @@ export async function editarGrupoSlot(slotId: number, grupoId: number): Promise<
   const [g] = await q<{ id: number; clave: string }>("select id, clave from grupos where id=$1", [grupoId]);
   if (!g) return { error: "Ese grupo no existe en el catálogo." };
 
-  const [info] = await q<{ grupo_id: number | null; materia_id: number | null; tipo: string | null; compactacion_id: number | null; materia: string | null; grupo: string | null }>(
-    `select s.grupo_id, s.materia_id, s.tipo, s.compactacion_id, m.nombre materia, g2.clave grupo from slots s
+  const [info] = await q<{ grupo_id: number | null; materia_id: number | null; tipo: string | null; compactacion_id: number | null; plantel: string | null; materia: string | null; grupo: string | null }>(
+    `select s.grupo_id, s.materia_id, s.tipo, s.compactacion_id, s.plantel, m.nombre materia, g2.clave grupo from slots s
        left join materias m on m.id = s.materia_id
        left join grupos g2 on g2.id = s.grupo_id where s.id = $1 and s.ciclo_id = ${act.id}`, [slotId]);
   if (!info) return { error: "No se encontró la clase en el ciclo activo." };
   if (info.compactacion_id != null)
     return { error: "Esta clase está compactada: sus grupos se gestionan desde Compactación (agregar grupos o separar), no cambiando la clave aquí." };
   if (info.grupo_id === grupoId) return { ok: "Sin cambios." };
+
+  // Coherencia plantel ⇔ campus: la clave del grupo termina en el código del campus. Solo se
+  // aceptan grupos cuyo código ya se use en el plantel de la clase (tolera variantes históricas
+  // como TEC/TC): así un dedazo en el select no cuelga un grupo de Palmas a una clase de CB.
+  const errCampus = await validarGrupoDelPlantel(g.clave, info.plantel);
+  if (errCampus) return { error: errCampus };
 
   const [dup] = await q<{ id: number }>(
     `select s.id from slots s
@@ -1410,9 +1463,18 @@ export async function crearGrupo(datos: {
     return { ok: false, error: `El grupo ${clave} ya existe. El siguiente número libre para esa combinación es G${sig}.` };
   }
 
-  const [nuevo] = await q<{ id: number }>(
-    `insert into grupos (clave, plan_id, cuatrimestre, alumnos) values ($1,$2,$3,$4) returning id`,
-    [clave, plan.id, cuatri, alumnos]);
+  // Carrera check-then-insert: si dos personas crean la misma clave a la vez, el UNIQUE de
+  // la base atrapa al segundo — aquí lo traducimos a un mensaje claro (no error crudo).
+  let nuevo: { id: number };
+  try {
+    [nuevo] = await q<{ id: number }>(
+      `insert into grupos (clave, plan_id, cuatrimestre, alumnos) values ($1,$2,$3,$4) returning id`,
+      [clave, plan.id, cuatri, alumnos]);
+  } catch (e) {
+    if ((e as { code?: string })?.code === "23505")
+      return { ok: false, error: `El grupo ${clave} se acaba de crear (quizá otra persona al mismo tiempo). Ciérrate del constructor y elígelo de la lista.` };
+    return { ok: false, error: `No se pudo crear el grupo: ${e instanceof Error ? e.message : "error desconocido"}` };
+  }
   await registrarCambio({
     entidad: "grupo",
     entidadId: nuevo.id,
@@ -1459,18 +1521,10 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
   if (tipo === "VIRTUAL" && (dia || hi || hf))
     return { error: "Las clases VIRTUALES no llevan día ni hora (asincrónicas, como todas las demás). Deja el horario vacío." };
 
-  // Materia: reutiliza por nombre (case-insensitive) o crea una nueva.
-  let [materia] = await q<{ id: number }>(
-    "select id from materias where lower(nombre)=lower($1)", [materiaNombre]);
-  if (!materia) {
-    [materia] = await q<{ id: number }>(
-      "insert into materias (nombre, slug) values ($1,$2) returning id",
-      [materiaNombre, slugify(materiaNombre)]);
-  }
-
-  // Grupo (opcional): SOLO del catálogo, por id. Ya no se crean grupos desde aquí con texto
-  // libre (era la puerta de los dedazos tipo "TC."/"ELE" y dejaba grupos sin plan_id): los
-  // grupos nuevos se arman con el constructor de clave ("+ Nuevo grupo" en el formulario).
+  // Grupo (opcional) PRIMERO: si el grupo va a fallar, que falle antes de tocar el catálogo
+  // de materias (si no, una materia nueva quedaba creada y huérfana aunque la acción errara).
+  // SOLO del catálogo, por id: ya no se crean grupos desde aquí con texto libre (era la puerta
+  // de los dedazos tipo "TC."/"ELE"); los nuevos se arman con el constructor ("+ Nuevo grupo").
   let grupoId: number | null = null;
   let grupoClave: string | null = null;
   if (grupoIdRaw) {
@@ -1479,8 +1533,20 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
       ? await q<{ id: number; clave: string }>("select id, clave from grupos where id=$1", [gid])
       : [];
     if (!grupo) return { error: "Ese grupo no existe en el catálogo. Elígelo de la lista o créalo con «+ Nuevo grupo»." };
+    // Coherencia plantel ⇔ campus de la clave (mismo candado que la edición inline).
+    const errCampus = await validarGrupoDelPlantel(grupo.clave, plantel);
+    if (errCampus) return { error: errCampus };
     grupoId = grupo.id;
     grupoClave = grupo.clave;
+  }
+
+  // Materia: reutiliza por nombre (case-insensitive) o crea una nueva.
+  let [materia] = await q<{ id: number }>(
+    "select id from materias where lower(nombre)=lower($1)", [materiaNombre]);
+  if (!materia) {
+    [materia] = await q<{ id: number }>(
+      "insert into materias (nombre, slug) values ($1,$2) returning id",
+      [materiaNombre, slugify(materiaNombre)]);
   }
 
   const [slot] = await q<{ id: number }>(
@@ -1791,20 +1857,24 @@ export async function agregarMateriaAClaseCompactada(
     if (hi >= hf) return { ok: false, error: `El horario está invertido o vacío (${hi}–${hf}): la hora de inicio debe ser antes que la de fin.` };
   }
 
-  // Anti-dedazo: si algún grupo YA lleva esa materia+tipo este ciclo, es un duplicado casi seguro.
-  const yaLaLlevan = await q<{ clave: string }>(
-    `select g.clave from slots s join grupos g on g.id = s.grupo_id
-      where s.ciclo_id=${act.id} and s.grupo_id = any($1)
-        and s.materia_id = $2 and s.tipo is not distinct from $3`,
-    [miembros.map((m) => m.grupo_id), mat.id, datos.tipo]);
-  if (yaLaLlevan.length)
-    return { ok: false, error: `Estos grupos ya llevan "${mat.nombre}" (${datos.tipo}) en este ciclo: ${yaLaLlevan.map((r) => r.clave).join(", ")}. No se crea un duplicado.` };
-
   // Escritura atómica: contenedor nuevo + un slot por grupo (ya ligados) + alertas.
   let nuevaCompId: number;
   const client = await pool.connect();
   try {
     await client.query("begin");
+    const exec = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows as T[]);
+    // Candado por compactación + anti-duplicado DENTRO de la transacción: dos pestañas
+    // creando la misma materia a la vez se serializan aquí; sin esto, ambas pasaban el
+    // chequeo y nacían dos clases gemelas con slots duplicados por grupo.
+    await exec("select pg_advisory_xact_lock(492813476, $1::int)", [compactacionId]);
+    const yaLaLlevan = await exec<{ clave: string }>(
+      `select g.clave from slots s join grupos g on g.id = s.grupo_id
+        where s.ciclo_id=${act.id} and s.grupo_id = any($1)
+          and s.materia_id = $2 and s.tipo is not distinct from $3`,
+      [miembros.map((m) => m.grupo_id), mat.id, datos.tipo]);
+    if (yaLaLlevan.length)
+      throw new Error(`estos grupos ya llevan "${mat.nombre}" (${datos.tipo}) en este ciclo: ${yaLaLlevan.map((r) => r.clave).join(", ")}. No se crea un duplicado.`);
     const { rows: [comp] } = await client.query<{ id: number }>(
       `insert into compactaciones (ciclo_id, materia_id, plantel, razon) values ($1,$2,$3,$4) returning id`,
       [act.id, mat.id, cont.plantel, `Materia agregada a los grupos compactados de "${cont.materia ?? "otra clase"}"`]);

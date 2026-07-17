@@ -52,7 +52,9 @@ export function NuevoGrupo({
     return nums.length ? Math.max(...nums) + 1 : 1;
   }, [plan, turno, campus, sub, datos.claves]);
 
-  const numEfectivo = numeroTocado && numero !== "" ? numero : sugerido != null ? String(sugerido) : "";
+  // Una vez tocado, el campo respeta lo tecleado (incluido vacío mientras borra/reescribe);
+  // solo cambiar la combinación (resetNumero) regresa a la sugerencia automática.
+  const numEfectivo = numeroTocado ? numero : sugerido != null ? String(sugerido) : "";
   const completo = !!(plan?.prefijo && turno && campus && numEfectivo);
   const clavePreview = completo
     ? `${plan!.prefijo}_G${numEfectivo}_${turno}${sub ? `_${sub}` : ""}_${campus}`
@@ -88,7 +90,14 @@ export function NuevoGrupo({
   };
 
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50/40 p-4 space-y-4">
+    <div
+      className="rounded-lg border border-blue-200 bg-blue-50/40 p-4 space-y-4"
+      // El constructor vive DENTRO del <form> de crear clase: sin esto, Enter en el campo de
+      // número disparaba el submit implícito del form padre (creaba la clase SIN el grupo a
+      // medio armar y navegaba fuera). Enter aquí no debe someter nada.
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") e.preventDefault();
+      }}>
       <div>
         <h3 className="text-sm font-medium text-slate-800">Nuevo grupo — la clave se arma sola</h3>
         <p className="mt-1 text-xs text-slate-500">

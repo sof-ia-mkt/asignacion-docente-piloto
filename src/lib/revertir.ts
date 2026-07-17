@@ -463,6 +463,48 @@ export async function aplicarReversion(id: number): Promise<ResultadoReversion> 
         }
       }
     }
+    // Candados de integridad al restaurar campos "sensibles" de slots (plantel / grupo):
+    // la acción original los validó, y deshacerla no debe poder crear lo que aquella prohíbe.
+    const filasSlots: SnapRow[] = [];
+    const junta = (s: Snap): void => {
+      if (s.kind === "multi") { s.snaps.forEach(junta); return; }
+      if (s.kind === "row" && s.tabla === "slots" && s.campos) filasSlots.push(s);
+    };
+    junta(antes);
+    for (const fs of filasSlots) {
+      const slotId = (fs.clave as Record<string, unknown>).id;
+      if (typeof slotId !== "number") continue;
+      const c = fs.campos!;
+      if (!("plantel" in c) && !("grupo_id" in c)) continue;
+      const [slot] = await exec<{ compactacion_id: number | null; ciclo_id: number; materia_id: number | null; tipo: string | null }>(
+        "select compactacion_id, ciclo_id, materia_id, tipo from slots where id=$1", [slotId]);
+      if (!slot) continue;   // si la foto esperaba fila, coincide() ya habría bloqueado
+      // La clase se compactó DESPUÉS del cambio original: revertir plantel/grupo rompería
+      // la unidad (la compactación es por plantel y por conjunto de grupos).
+      if (slot.compactacion_id != null) {
+        await client.query("rollback");
+        return { ok: false, error: "No se puede deshacer: la clase ahora está compactada con otros grupos. Sepárala primero (en Compactación) y vuelve a intentar." };
+      }
+      if ("grupo_id" in c && c.grupo_id != null) {
+        const gid = c.grupo_id as number;
+        // El grupo original pudo eliminarse por limpieza de huérfanos: FK amable, no error crudo.
+        const [g] = await exec<{ id: number }>("select id from grupos where id=$1", [gid]);
+        if (!g) {
+          await client.query("rollback");
+          return { ok: false, error: "No se puede deshacer: el grupo original ya no está en el catálogo (se eliminó al quedar sin clases). Créalo de nuevo con «+ Nuevo grupo» si hace falta." };
+        }
+        // Mismo anti-duplicado que editarGrupoSlot: no restaurar un grupo que ya lleva esta materia+tipo.
+        const [dup] = await exec<{ id: number }>(
+          `select s.id from slots s
+            where s.ciclo_id = $1 and s.grupo_id = $2 and s.id <> $3
+              and s.materia_id is not distinct from $4 and s.tipo is not distinct from $5
+            limit 1`, [slot.ciclo_id, gid, slotId, slot.materia_id, slot.tipo]);
+        if (dup) {
+          await client.query("rollback");
+          return { ok: false, error: "No se puede deshacer: el grupo original ya lleva esta misma materia y tipo en el ciclo (restaurarlo crearía un duplicado)." };
+        }
+      }
+    }
     await aplicar(antes, exec);
     await client.query("commit");
   } catch (e) {

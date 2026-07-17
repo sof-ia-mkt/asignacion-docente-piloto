@@ -7,7 +7,6 @@ const input = "w-full px-3 py-2 rounded-md border border-slate-300 text-sm";
 const label = "block text-sm font-medium text-slate-700 mb-1";
 
 const TIPOS = ["DISCIPLINAR", "MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "VIRTUAL"];
-const MODALIDADES = ["PRESENCIAL", "ASINCRÓNICA"];
 const DIAS = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO", "N/A"];
 const CUATRIS = ["1°", "2°", "3°", "4°", "5°", "6°", "7°", "8°", "9°"];
 
@@ -29,14 +28,11 @@ export function NuevaMateriaForm({
   const [grupoSel, setGrupoSel] = useState("");
   const [creandoGrupo, setCreandoGrupo] = useState(false);
   // Regla de los datos (sin excepciones): VIRTUAL ⇔ ASINCRÓNICA; el resto, PRESENCIAL.
-  // Al cambiar el tipo, la modalidad se acomoda sola para no capturar combinaciones imposibles.
+  // La modalidad se DERIVA del tipo (no se elige): así es imposible capturar una combinación
+  // que el servidor rechazaría. Con VIRTUAL, además, el horario desaparece del formulario.
   const [tipoSel, setTipoSel] = useState("DISCIPLINAR");
-  const [modalidadSel, setModalidadSel] = useState("PRESENCIAL");
-  const cambiarTipo = (t: string) => {
-    setTipoSel(t);
-    if (t === "VIRTUAL") setModalidadSel("ASINCRÓNICA");
-    else if (modalidadSel === "ASINCRÓNICA") setModalidadSel("PRESENCIAL");
-  };
+  const esVirtual = tipoSel === "VIRTUAL";
+  const modalidadDerivada = esVirtual ? "ASINCRÓNICA" : "PRESENCIAL";
 
   // Aviso suave (no bloquea): una clase PRESENCIAL sin horario casi siempre es un olvido.
   // Las virtuales/asincrónicas no tienen hora fija, así que ahí no preguntamos.
@@ -63,12 +59,12 @@ export function NuevaMateriaForm({
         </div>
         <div>
           <label className={label}>Tipo de clase</label>
-          <select name="tipo" value={tipoSel} onChange={(e) => cambiarTipo(e.target.value)} className={input}>
+          <select name="tipo" value={tipoSel} onChange={(e) => setTipoSel(e.target.value)} className={input}>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
-          {tipoSel === "VIRTUAL" && (
+          {esVirtual && (
             <p className="mt-1 text-xs text-slate-400">
-              Las virtuales son asincrónicas y sin horario (así están todas las demás): la modalidad se ajustó sola.
+              Las virtuales son asincrónicas y sin horario (así están todas las demás): la modalidad se ajustó sola y el horario se ocultó.
             </p>
           )}
         </div>
@@ -109,26 +105,32 @@ export function NuevaMateriaForm({
 
         <div>
           <label className={label}>Modalidad</label>
-          <select name="modalidad" value={modalidadSel} onChange={(e) => setModalidadSel(e.target.value)} className={input}>
-            {MODALIDADES.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+          {/* Derivada del tipo (regla sin excepciones en los datos): se muestra, no se elige.
+              El valor viaja en un hidden para que el servidor la reciba igual que antes. */}
+          <input type="hidden" name="modalidad" value={modalidadDerivada} />
+          <div className={input + " bg-slate-50 text-slate-600"}>{modalidadDerivada}</div>
+          <p className="mt-1 text-xs text-slate-400">Se define sola por el tipo de clase.</p>
         </div>
-        <div>
-          <label className={label}>Día <span className="text-slate-400 font-normal">(opcional)</span></label>
-          <select name="dia" defaultValue="" className={input}>
-            <option value="">— sin día —</option>
-            {DIAS.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-        </div>
+        {!esVirtual && (
+          <>
+            <div>
+              <label className={label}>Día <span className="text-slate-400 font-normal">(opcional)</span></label>
+              <select name="dia" defaultValue="" className={input}>
+                <option value="">— sin día —</option>
+                {DIAS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
 
-        <div>
-          <label className={label}>Hora inicio <span className="text-slate-400 font-normal">(opcional)</span></label>
-          <input name="hora_inicio" className={input} placeholder="07:00" />
-        </div>
-        <div>
-          <label className={label}>Hora fin <span className="text-slate-400 font-normal">(opcional)</span></label>
-          <input name="hora_fin" className={input} placeholder="09:00" />
-        </div>
+            <div>
+              <label className={label}>Hora inicio <span className="text-slate-400 font-normal">(opcional)</span></label>
+              <input name="hora_inicio" className={input} placeholder="07:00" />
+            </div>
+            <div>
+              <label className={label}>Hora fin <span className="text-slate-400 font-normal">(opcional)</span></label>
+              <input name="hora_fin" className={input} placeholder="09:00" />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Constructor de grupo: crea la clave por partes y la deja seleccionada arriba. */}
