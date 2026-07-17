@@ -591,7 +591,9 @@ export async function getAlertas(f: { tipo?: string; severidad?: string; plantel
   const params: unknown[] = [];
   if (f.tipo) { params.push(f.tipo); cond.push(`a.tipo = $${params.length}`); }
   if (f.severidad) { params.push(f.severidad); cond.push(`a.severidad = $${params.length}`); }
-  if (f.plantel) { params.push(f.plantel); cond.push(`s.plantel = $${params.length}`); }
+  // Las alertas a nivel docente (sobrecarga) no tienen slot: el filtro de plantel no debe
+  // esconderlas (antes el LEFT JOIN + s.plantel=$n las convertía en filas imposibles).
+  if (f.plantel) { params.push(f.plantel); cond.push(`(s.plantel = $${params.length} or a.slot_id is null)`); }
   const where = `where ${cond.join(" and ")}`;
   return q<{
     id: number; tipo: string; severidad: string; detalle: string;
@@ -614,7 +616,8 @@ export async function getAlertas(f: { tipo?: string; severidad?: string; plantel
 // Conteo de alertas por tipo dentro del plantel elegido (para las tarjetas de resumen).
 export async function getAlertasResumen(plantel?: string) {
   const act = await cicloActivo();
-  const cond = `where a.ciclo_id = ${act.id}` + (plantel ? " and s.plantel = $1" : "");
+  // slot_id null = alerta a nivel docente (sobrecarga): también cuenta con filtro de plantel.
+  const cond = `where a.ciclo_id = ${act.id}` + (plantel ? " and (s.plantel = $1 or a.slot_id is null)" : "");
   const p = plantel ? [plantel] : [];
   return q<{ tipo: string; n: number }>(
     `select a.tipo, count(*)::int n
@@ -707,10 +710,12 @@ export async function getDashDocentes(plantel?: string) {
 export async function getDashRiesgos(plantel?: string) {
   const act = await cicloActivo();
   const p = plantel ? [plantel] : [];
+  // LEFT join + (plantel o sin slot): las alertas a nivel docente (sobrecarga, slot_id null)
+  // no deben desaparecer del dashboard al filtrar por plantel.
   const porTipo = await q<{ tipo: string; severidad: string; n: number }>(
     `select al.tipo, al.severidad, count(*)::int n from alertas al
-       ${plantel ? "join slots s on s.id = al.slot_id" : ""}
-      where al.ciclo_id = ${act.id} ${plantel ? "and s.plantel = $1" : ""}
+       ${plantel ? "left join slots s on s.id = al.slot_id" : ""}
+      where al.ciclo_id = ${act.id} ${plantel ? "and (s.plantel = $1 or al.slot_id is null)" : ""}
       group by al.tipo, al.severidad order by al.tipo`, p);
   const materiasSinCand = await q<{ materia: string; n: number }>(
     `select coalesce(m.nombre,'(sin materia)') materia, count(*)::int n
