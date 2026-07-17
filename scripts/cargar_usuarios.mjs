@@ -2,11 +2,22 @@
 // Cifra la contraseña temporal con el MISMO scrypt que src/lib/password.ts.
 // Idempotente: si el usuario ya existe, NO lo toca (no resetea contraseñas ya cambiadas).
 // Uso: node scripts/cargar_usuarios.mjs
-import { scryptSync, randomBytes } from "node:crypto";
+//
+// SEGURIDAD: la temporal es ALEATORIA y DISTINTA por usuario (misma regla que el alta por
+// UI, generarPasswordTemporal). Antes era una constante compartida commiteada en el repo:
+// cualquiera con acceso al código podía entrar a las cuentas que no la hubieran cambiado.
+// Cada temporal se imprime UNA vez aquí; anótala y compártela por un canal seguro.
+import { scryptSync, randomBytes, randomInt } from "node:crypto";
 import pg from "pg";
 import { loadEnv } from "./_env.mjs";
 
-const PASSWORD_TEMP = "Cenyca!!23";
+// Alfabeto sin caracteres confundibles (0/O, 1/l/I), igual que usuarios-db.ts.
+const ABC_TEMPORAL = "abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+function passwordTemporal() {
+  let s = "";
+  for (let i = 0; i < 10; i++) s += ABC_TEMPORAL[randomInt(ABC_TEMPORAL.length)];
+  return `T-${s}`;
+}
 
 function cifrar(plano) {
   const salt = randomBytes(16);
@@ -31,17 +42,19 @@ await client.connect();
 
 let nuevos = 0;
 for (const [usuario, nombre, correo, rol, carrera, esAdmin] of USUARIOS) {
+  const temporal = passwordTemporal();
   const res = await client.query(
     `insert into usuarios (usuario, nombre, correo, rol, carrera, es_admin, password_hash, debe_cambiar_password)
      values ($1,$2,$3,$4,$5,$6,$7,true)
      on conflict (usuario) do nothing
      returning usuario`,
-    [usuario, nombre, correo, rol, carrera, esAdmin, cifrar(PASSWORD_TEMP)],
+    [usuario, nombre, correo, rol, carrera, esAdmin, cifrar(temporal)],
   );
-  if (res.rowCount) { nuevos++; console.log(`+ ${usuario}${esAdmin ? " (admin)" : ""}`); }
+  if (res.rowCount) { nuevos++; console.log(`+ ${usuario}${esAdmin ? " (admin)" : ""} · temporal: ${temporal}`); }
   else console.log(`= ${usuario} (ya existía, sin cambios)`);
 }
 
 const { rows } = await client.query("select count(*)::int n from usuarios");
-console.log(`\nNuevos: ${nuevos}. Total en padrón: ${rows[0].n}. Contraseña temporal: ${PASSWORD_TEMP}`);
+console.log(`\nNuevos: ${nuevos}. Total en padrón: ${rows[0].n}.`);
+if (nuevos) console.log("Anota las temporales de arriba: no se guardan en claro y no se pueden recuperar.");
 await client.end();
