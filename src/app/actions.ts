@@ -68,6 +68,21 @@ const slugify = (s: string) =>
 // Validación mínima de correo (no exhaustiva; solo evita capturas claramente mal formadas).
 const esCorreoValido = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
 
+// Validación del archivo de CV ANTES de mandarlo a Claude (~$0.05/llamada). El MIME lo
+// declara el navegador (falsificable); el tamaño y los bytes iniciales `%PDF-` no. Sin el
+// tope, un archivo enorme es costo de API y memoria del servidor.
+const MAX_CV_MB = 5;
+async function validarCV(file: unknown): Promise<{ ok: true; pdf: Buffer } | { ok: false; error: string }> {
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Sube el archivo PDF del CV." };
+  if (file.type !== "application/pdf") return { ok: false, error: "El CV debe ser un archivo PDF." };
+  if (file.size > MAX_CV_MB * 1024 * 1024)
+    return { ok: false, error: `El CV pesa más de ${MAX_CV_MB} MB. Reduce el PDF (quita imágenes pesadas o re-exporta) y vuelve a subirlo.` };
+  const pdf = Buffer.from(await file.arrayBuffer());
+  if (pdf.length < 5 || !pdf.subarray(0, 5).equals(Buffer.from("%PDF-")))
+    return { ok: false, error: "El archivo no es un PDF válido (el contenido no corresponde a un PDF). Exporta el CV como PDF y vuelve a subirlo." };
+  return { ok: true, pdf };
+}
+
 export type CrearDocenteState = { error?: string };
 
 // Alta de docente. Camino 'manual' = marca materias ya impartidas (+40). Camino 'cv' = Claude lee el PDF.
@@ -98,10 +113,9 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
   if (camino === "manual") {
     if (materiaIds.length === 0) return { error: "Selecciona al menos una materia que ya haya impartido." };
   } else {
-    const file = fd.get("cv");
-    if (!(file instanceof File) || file.size === 0) return { error: "Sube el archivo PDF del CV." };
-    if (file.type !== "application/pdf") return { error: "El CV debe ser un archivo PDF." };
-    pdf = Buffer.from(await file.arrayBuffer());
+    const cvv = await validarCV(fd.get("cv"));
+    if (!cvv.ok) return { error: cvv.error };
+    pdf = cvv.pdf;
   }
 
   // Evitar duplicados de nombre/slug.
@@ -821,10 +835,9 @@ export async function procesarCVDocente(profesorId: number, _prev: ProcesarCVSta
     "select id, nombre, slug from profesores where id=$1", [profesorId]);
   if (!prof) return { error: "No se encontró el docente." };
 
-  const file = fd.get("cv");
-  if (!(file instanceof File) || file.size === 0) return { error: "Sube el archivo PDF del CV." };
-  if (file.type !== "application/pdf") return { error: "El CV debe ser un archivo PDF." };
-  const pdf = Buffer.from(await file.arrayBuffer());
+  const cvv = await validarCV(fd.get("cv"));
+  if (!cvv.ok) return { error: cvv.error };
+  const pdf = cvv.pdf;
 
   let res;
   try {
@@ -833,34 +846,61 @@ export async function procesarCVDocente(profesorId: number, _prev: ProcesarCVSta
     return { error: `No se pudo leer el CV: ${e instanceof Error ? e.message : "error desconocido"}` };
   }
 
-  // Actualiza los datos del docente con lo del CV (conserva lo previo si Claude no lo trae).
-  await q(
-    `update profesores set
-       licenciatura      = coalesce(nullif($2,''), licenciatura),
-       maestria          = coalesce(nullif($3,''), maestria),
-       area_cv           = coalesce(nullif($4,''), area_cv),
-       anios_experiencia = coalesce($5, anios_experiencia),
-       cv_archivo        = $6
-     where id = $1`,
-    [profesorId, res.perfil.licenciatura ?? "", res.perfil.maestria ?? "",
-     res.perfil.area_principal ?? "", res.perfil.anios_experiencia ?? null, `${prof.slug}.pdf`]);
-
-  // Perfil crudo para auditoría (una fila por docente → upsert).
-  await q(
-    `insert into cv_competencias (profesor_id, payload, modelo) values ($1,$2,$3)
-     on conflict (profesor_id) do update set payload = excluded.payload, modelo = excluded.modelo, creado_en = now()`,
-    [profesorId, res.perfil, res.modelo]);
-
-  // Suma materias candidatas. 'returning' con 'do nothing' solo devuelve las realmente insertadas.
+  // Toda la escritura en UNA transacción (perfil + payload de auditoría + candidaturas +
+  // alertas): si algo falla a la mitad (p. ej. corte del pooler), no queda un docente a
+  // medias con cv_archivo actualizado pero sin candidaturas. Mismo patrón que crearDocente.
   let nuevas = 0;
-  for (const c of res.candidaturas) {
-    const ins = await q(
-      `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
-       values ($1,$2,'cv',$3,$4)
-       on conflict (profesor_id, materia_id) do nothing
-       returning materia_id`,
-      [profesorId, c.materia_id, c.puntaje, c.razon]);
-    if (ins.length) nuevas++;
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    const exec = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows as T[]);
+
+    // Actualiza los datos del docente con lo del CV (conserva lo previo si Claude no lo trae).
+    await exec(
+      `update profesores set
+         licenciatura      = coalesce(nullif($2,''), licenciatura),
+         maestria          = coalesce(nullif($3,''), maestria),
+         area_cv           = coalesce(nullif($4,''), area_cv),
+         anios_experiencia = coalesce($5, anios_experiencia),
+         cv_archivo        = $6
+       where id = $1`,
+      [profesorId, res.perfil.licenciatura ?? "", res.perfil.maestria ?? "",
+       res.perfil.area_principal ?? "", res.perfil.anios_experiencia ?? null, `${prof.slug}.pdf`]);
+
+    // Perfil crudo para auditoría (una fila por docente → upsert).
+    await exec(
+      `insert into cv_competencias (profesor_id, payload, modelo) values ($1,$2,$3)
+       on conflict (profesor_id) do update set payload = excluded.payload, modelo = excluded.modelo, creado_en = now()`,
+      [profesorId, res.perfil, res.modelo]);
+
+    // Suma materias candidatas EN LOTE (antes: un insert por candidatura, N viajes).
+    // 'returning' con 'do nothing' solo devuelve las realmente insertadas.
+    if (res.candidaturas.length) {
+      const ins = await exec<{ materia_id: number }>(
+        `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
+         select $1, t.m, 'cv', t.p, t.r
+           from unnest($2::int[], $3::int[], $4::text[]) as t(m, p, r)
+         on conflict (profesor_id, materia_id) do nothing
+         returning materia_id`,
+        [profesorId,
+         res.candidaturas.map((c) => c.materia_id),
+         res.candidaturas.map((c) => c.puntaje),
+         res.candidaturas.map((c) => c.razon)]);
+      nuevas = ins.length;
+    }
+
+    // Alertas en la misma transacción (solo en planeación: el diagnóstico de historial está congelado).
+    const actCiclo = await cicloActivo();
+    if (actCiclo.estado === "planeacion")
+      await recomputarAlertas((sql: string, params: unknown[] = []) =>
+        client.query(sql, params).then((r) => r.rows), actCiclo.id);
+    await client.query("commit");
+  } catch (e) {
+    await client.query("rollback");
+    return { error: `No se pudo guardar lo extraído del CV: ${e instanceof Error ? e.message : "error desconocido"}` };
+  } finally {
+    client.release();
   }
 
   const total = res.candidaturas.length;
@@ -872,7 +912,7 @@ export async function procesarCVDocente(profesorId: number, _prev: ProcesarCVSta
     despues: { profesorId, propuestas: total, nuevas },
   });
 
-  await recalcularAlertas();
+  // (Las alertas ya se recalcularon dentro de la transacción de arriba.)
   revalidatePath(`/profesores/${profesorId}`);
   revalidatePath(`/profesores/${profesorId}/editar`);
   revalidatePath("/profesores");
