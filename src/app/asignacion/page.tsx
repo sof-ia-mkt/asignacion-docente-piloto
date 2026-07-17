@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSlotsSeptiembre, getPlanteles, contarSugeridas, getFacetasSlots, getConteoPorEstado, getMaterias } from "@/lib/queries";
+import { getSlotsSeptiembre, getPlanteles, contarSugeridas, getFacetasSlots, getConteoPorEstado, getMaterias, getGrupos } from "@/lib/queries";
 import { cicloActivo } from "@/lib/ciclo";
 import { plantelCorto } from "@/lib/ui";
 import { confirmarSugeridas } from "@/app/actions";
@@ -26,7 +26,7 @@ export default async function AsignacionPage({
   const modalidad = parseMulti(sp.modalidad);
   const comp = sp.comp ?? "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const [{ rows, total, pages, limit }, planteles, sugeridas, facetas, conteo, act, materias] = await Promise.all([
+  const [{ rows, total, pages, limit }, planteles, sugeridas, facetas, conteo, act, materias, grupos] = await Promise.all([
     getSlotsSeptiembre({ estado, q: qstr, plantel, cuatri, tipo, plan, turno, modalidad, comp, page }),
     getPlanteles(),
     contarSugeridas({ plantel, cuatri, tipo, q: qstr, plan, turno, modalidad, comp }),
@@ -34,6 +34,7 @@ export default async function AsignacionPage({
     getConteoPorEstado({ q: qstr, plantel, cuatri, tipo, plan, turno, modalidad, comp }),
     cicloActivo(),
     getMaterias(),
+    getGrupos(),
   ]);
   // Texto que describe el alcance EXACTO del botón "Aceptar N sugeridas": los mismos filtros
   // que la lista. Así el coordinador sabe qué va a confirmar antes de apretar.
@@ -113,7 +114,9 @@ export default async function AsignacionPage({
         planteles={planteles} cuatris={facetas.cuatris} tipos={facetas.tipos}
         carreras={facetas.carreras} turnos={facetas.turnos} modalidades={facetas.modalidades} conteo={conteo} />
 
-      <TablaAsignacion rows={rows} materias={materias} parked={estado === "no_apertura"}
+      <TablaAsignacion rows={rows} materias={materias}
+        planteles={planteles.map((p) => p.plantel)} grupos={grupos}
+        parked={estado === "no_apertura"}
         soloLectura={act.estado !== "planeacion"} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-slate-400">

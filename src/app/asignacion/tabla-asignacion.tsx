@@ -9,7 +9,7 @@ import { Estado, Fuerza, planCorto, plantelCorto } from "@/lib/ui";
 import { marcarNoApertura, reactivarSlot } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { BotonSubmit } from "@/lib/boton-submit";
-import { CeldaMateria, CeldaTipo } from "./celdas-editables";
+import { CeldaMateria, CeldaTipo, CeldaPlantel, CeldaGrupo, CeldaIdExcel } from "./celdas-editables";
 
 export type SlotFila = {
   id: number;
@@ -20,6 +20,7 @@ export type SlotFila = {
   plan: string | null;
   cuatrimestre: number | string | null;
   tipo: string | null;
+  grupo_id: number | null;
   grupo: string | null;
   alumnos: number | null;
   aula: string | null;
@@ -38,11 +39,15 @@ export type SlotFila = {
 export function TablaAsignacion({
   rows,
   materias,
+  planteles,
+  grupos,
   parked = false,
   soloLectura = false,
 }: {
   rows: SlotFila[];
   materias: { id: number; nombre: string }[];
+  planteles: string[];
+  grupos: { id: number; clave: string }[];
   parked?: boolean;
   soloLectura?: boolean;
 }) {
@@ -75,8 +80,12 @@ export function TablaAsignacion({
               onClick={() => router.push(`/asignacion/${s.id}`)}
               className="hover:bg-slate-50 cursor-pointer group"
             >
-              <td className="px-4 py-2 tabular-nums text-slate-500">{s.id_excel ?? <span className="text-slate-300">—</span>}</td>
-              <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{plantelCorto(s.plantel)}</td>
+              <td className="px-4 py-2 tabular-nums text-slate-500">
+                {soloLectura ? (s.id_excel ?? <span className="text-slate-300">—</span>) : <CeldaIdExcel slotId={s.id} idExcel={s.id_excel} />}
+              </td>
+              <td className="px-4 py-2 text-slate-500 hidden md:table-cell">
+                {soloLectura ? plantelCorto(s.plantel) : <CeldaPlantel slotId={s.id} plantel={s.plantel} planteles={planteles} />}
+              </td>
               <td className="px-4 py-2 text-slate-800">
                 {soloLectura
                   ? (s.materia ?? <span className="text-slate-300">—</span>)
@@ -87,7 +96,9 @@ export function TablaAsignacion({
               <td className="px-4 py-2 hidden lg:table-cell">
                 {soloLectura ? (s.tipo ?? <span className="text-slate-300">—</span>) : <CeldaTipo slotId={s.id} tipo={s.tipo} />}
               </td>
-              <td className="px-4 py-2 text-slate-600">{s.grupo ?? "—"}</td>
+              <td className="px-4 py-2 text-slate-600">
+                {soloLectura ? (s.grupo ?? "—") : <CeldaGrupo slotId={s.id} grupoId={s.grupo_id} clave={s.grupo} grupos={grupos} />}
+              </td>
               <td className="px-4 py-2 text-right text-slate-600 hidden 2xl:table-cell">{s.alumnos ?? <span className="text-slate-300">—</span>}</td>
               <td className="px-4 py-2 text-slate-600 hidden 2xl:table-cell">{s.aula ?? <span className="text-slate-300">—</span>}</td>
               <td className="px-4 py-2 text-slate-600 hidden 2xl:table-cell">{s.dia && s.dia !== "N/A" && s.hora_inicio && s.hora_fin ? `${s.dia} ${s.hora_inicio}-${s.hora_fin}` : <span className="text-slate-300">—</span>}</td>

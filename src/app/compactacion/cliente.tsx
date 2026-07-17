@@ -11,7 +11,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { plantelCorto } from "@/lib/ui";
-import { compactar, separar, marcarChico, editarRazonCompactacion, agregarACompactacion, homogeneizarHorarioCompactacion, editarAlumnosGrupo } from "@/app/actions";
+import { compactar, separar, marcarChico, editarRazonCompactacion, agregarACompactacion, homogeneizarHorarioCompactacion, editarAlumnosGrupo, agregarMateriaAClaseCompactada } from "@/app/actions";
 import type { CompactCandidato, CompactGrupo, CompactacionActiva, DocenteCandidato } from "@/lib/queries";
 
 const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
@@ -37,12 +37,13 @@ const POR_PAGINA = 20;   // candidatas mostradas de inicio (cada "Mostrar más" 
 type SlotInfo = CompactGrupo & { materia_id: number; materia: string; plantel: string; tipo: string };
 
 export function CompactacionCliente({
-  candidatos, compactaciones, docentesPorMateria, libresPorClave,
+  candidatos, compactaciones, docentesPorMateria, libresPorClave, materias,
 }: {
   candidatos: CompactCandidato[];
   compactaciones: CompactacionActiva[];
   docentesPorMateria: Record<number, DocenteCandidato[]>;
   libresPorClave: Record<string, CompactGrupo[]>;
+  materias: { id: number; nombre: string }[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -305,7 +306,7 @@ export function CompactacionCliente({
           </h2>
           <div className="space-y-2">
             {compFiltradas.map((c) => (
-              <TarjetaCompactada key={c.id} c={c} libres={libresPorClave[`${c.materia_id}|${c.plantel}|${c.tipo}`] ?? []} />
+              <TarjetaCompactada key={c.id} c={c} libres={libresPorClave[`${c.materia_id}|${c.plantel}|${c.tipo}`] ?? []} materias={materias} />
             ))}
           </div>
         </section>
@@ -542,7 +543,9 @@ export function CompactacionCliente({
 
 // Tarjeta de una clase YA compactada: muestra grupos/horario/docente/aula, con acciones
 // reversibles — Separar, Editar razón y Agregar más grupos (de la misma materia y plantel).
-function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: CompactGrupo[] }) {
+const TIPOS_CLASE_UI = ["DISCIPLINAR", "MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "VIRTUAL"];
+
+function TarjetaCompactada({ c, libres, materias }: { c: CompactacionActiva; libres: CompactGrupo[]; materias: { id: number; nombre: string }[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -554,6 +557,9 @@ function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: Compa
   const [unificando, setUnificando] = useState(false);
   const [horarioSel, setHorarioSel] = useState<string>("");
   const [customH, setCustomH] = useState({ dia: "Lunes", hora_inicio: "", hora_fin: "" });
+  // Panel "Otra materia": crear una materia más para TODOS los grupos de esta clase (nace compactada).
+  const [otraMateria, setOtraMateria] = useState(false);
+  const [nuevaMat, setNuevaMat] = useState({ materiaId: "", tipo: "DISCIPLINAR", dia: "", hora_inicio: "", hora_fin: "" });
 
   // Horarios distintos presentes entre los grupos de la clase (para ofrecerlos al unificar).
   const firmasMiembros = [...new Set(c.grupos.map((g) => firma(g)).filter(Boolean))];
@@ -587,6 +593,36 @@ function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: Compa
       if (!r.ok) { setError(r.error); return; }
       setAgregando(false);
       setSelAgg(new Set());
+      router.refresh();
+    });
+  };
+
+  const ejecutarOtraMateria = () => {
+    const mid = Number(nuevaMat.materiaId);
+    if (!mid) { setError("Elige la materia del catálogo."); return; }
+    const partes = [nuevaMat.dia, nuevaMat.hora_inicio, nuevaMat.hora_fin];
+    const conHorario = partes.every(Boolean);
+    if (partes.some(Boolean) && !conHorario) {
+      setError("Para fijar horario captura día, hora inicio y hora fin — o deja los tres vacíos (se captura después).");
+      return;
+    }
+    const nombre = materias.find((m) => m.id === mid)?.nombre ?? "esa materia";
+    if (!window.confirm(
+      `¿Crear "${nombre}" (${nuevaMat.tipo}) para los ${c.grupos.length} grupos de esta clase compactada?\n\n` +
+      `Nace como UNA sola clase compactada (${c.grupos.map((g) => g.grupo).join(", ")}), sin docente` +
+      `${conHorario ? ` y en ${nuevaMat.dia} ${nuevaMat.hora_inicio}–${nuevaMat.hora_fin}` : " y sin horario"}. ` +
+      `El docente se asigna después desde Asignación (ahí se validan los choques).`,
+    )) return;
+    setError(null);
+    start(async () => {
+      const r = await agregarMateriaAClaseCompactada(c.id, {
+        materiaId: mid,
+        tipo: nuevaMat.tipo,
+        horario: conHorario ? { dia: nuevaMat.dia, hora_inicio: nuevaMat.hora_inicio, hora_fin: nuevaMat.hora_fin } : null,
+      });
+      if (!r.ok) { setError(r.error); return; }
+      setOtraMateria(false);
+      setNuevaMat({ materiaId: "", tipo: "DISCIPLINAR", dia: "", hora_inicio: "", hora_fin: "" });
       router.refresh();
     });
   };
@@ -634,12 +670,17 @@ function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: Compa
             {editando ? "Cerrar" : "Editar razón"}
           </button>
           {libres.length > 0 && (
-            <button type="button" onClick={() => { setAgregando((v) => !v); setEditando(false); setSelAgg(new Set()); setError(null); }}
+            <button type="button" onClick={() => { setAgregando((v) => !v); setEditando(false); setOtraMateria(false); setSelAgg(new Set()); setError(null); }}
               disabled={pending}
               className="px-2 py-1 rounded-md border border-emerald-300 bg-white text-xs text-emerald-800 hover:bg-emerald-50 disabled:opacity-60">
               {agregando ? "Cerrar" : `Agregar grupos (${libres.length})`}
             </button>
           )}
+          <button type="button" onClick={() => { setOtraMateria((v) => !v); setEditando(false); setAgregando(false); setError(null); }}
+            disabled={pending}
+            className="px-2 py-1 rounded-md border border-violet-300 bg-white text-xs text-violet-800 hover:bg-violet-50 disabled:opacity-60">
+            {otraMateria ? "Cerrar" : "Otra materia"}
+          </button>
           <button type="button" onClick={ejecutarSeparar} disabled={pending}
             className="px-2 py-1 rounded-md border border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60">
             Separar
@@ -671,6 +712,44 @@ function TarjetaCompactada({ c, libres }: { c: CompactacionActiva; libres: Compa
       </div>
 
       {error && <div className="mx-3 mb-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
+
+      {/* Panel "Otra materia": los grupos fusionados cursan juntos VARIAS materias — aquí se crea
+          la siguiente de un jalón para todos los grupos, ya compactada. Todo por catálogo
+          (materia y tipo son selección estricta; el horario es opcional y validado). */}
+      {otraMateria && (
+        <div className="mx-3 mb-2 rounded-md border border-violet-200 bg-violet-50/60 px-3 py-2 space-y-2">
+          <div className="text-[11px] font-medium text-violet-900">
+            Crear otra materia para los {c.grupos.length} grupos de esta clase ({c.grupos.map((g) => g.grupo).join(", ")}).
+            Nace compactada y sin docente; el docente se asigna después en Asignación.
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <select value={nuevaMat.materiaId} onChange={(e) => setNuevaMat({ ...nuevaMat, materiaId: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white max-w-[280px]">
+              <option value="">— elige la materia —</option>
+              {materias.filter((m) => m.nombre.trim()).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+            </select>
+            <select value={nuevaMat.tipo} onChange={(e) => setNuevaMat({ ...nuevaMat, tipo: e.target.value })}
+              className="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
+              {TIPOS_CLASE_UI.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <span className="text-[11px] text-slate-500">Horario (opcional):</span>
+            <select value={nuevaMat.dia} onChange={(e) => setNuevaMat({ ...nuevaMat, dia: e.target.value })}
+              className="border border-slate-300 rounded px-1 py-1 text-xs bg-white">
+              <option value="">— día —</option>
+              {DIAS.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <input type="time" value={nuevaMat.hora_inicio} onChange={(e) => setNuevaMat({ ...nuevaMat, hora_inicio: e.target.value })}
+              className="border border-slate-300 rounded px-1 py-0.5 text-xs bg-white" />
+            <span className="text-xs text-slate-400">–</span>
+            <input type="time" value={nuevaMat.hora_fin} onChange={(e) => setNuevaMat({ ...nuevaMat, hora_fin: e.target.value })}
+              className="border border-slate-300 rounded px-1 py-0.5 text-xs bg-white" />
+            <button type="button" onClick={ejecutarOtraMateria} disabled={pending}
+              className="px-2.5 py-1 rounded-md bg-violet-700 text-white text-xs hover:bg-violet-800 disabled:opacity-60">
+              {pending ? "Creando…" : "Crear para todos los grupos"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {(!c.horarioUniforme || !c.docenteUniforme) && (
         <div className="px-3 pb-2 space-y-1.5">

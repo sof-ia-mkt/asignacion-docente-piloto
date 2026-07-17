@@ -374,13 +374,13 @@ export async function getSlotsSeptiembre(f: SlotFiltro, limit = 25) {
   params.push(offset);
   const pOffset = params.length;
   const rows = await q<{
-    id: number; id_excel: number | null; plantel: string; materia_id: number | null; materia: string | null; grupo: string | null; dia: string | null;
+    id: number; id_excel: number | null; plantel: string; materia_id: number | null; materia: string | null; grupo_id: number | null; grupo: string | null; dia: string | null;
     hora_inicio: string | null; hora_fin: string | null; tipo: string | null;
     plan: string | null; cuatrimestre: string | null; alumnos: number | null; aula: string | null;
     docente: string | null; estado: string | null; puntaje: number | null; razon: string | null;
     compactacion_id: number | null;
   }>(
-    `select s.id, s.id_excel, s.plantel, s.materia_id, m.nombre materia, g.clave grupo, s.dia, s.hora_inicio, s.hora_fin, s.tipo,
+    `select s.id, s.id_excel, s.plantel, s.materia_id, m.nombre materia, s.grupo_id, g.clave grupo, s.dia, s.hora_inicio, s.hora_fin, s.tipo,
             pl.nombre plan, s.cuatrimestre, g.alumnos, au.clave aula, s.compactacion_id,
             p.nombre docente, a.estado, a.puntaje, a.razon
        from slots s

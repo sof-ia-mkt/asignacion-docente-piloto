@@ -6,8 +6,8 @@
 //   - "Renombrar…" es la excepción controlada: corrige el nombre EN EL CATÁLOGO,
 //     avisando primero a cuántas clases afecta (incluido el historial de mayo).
 import { useState, useTransition } from "react";
-import { editarMateriaSlot, editarTipoSlot, renombrarMateria, usoMateria } from "@/app/actions";
-import { TipoClase } from "@/lib/ui";
+import { editarMateriaSlot, editarTipoSlot, editarPlantelSlot, editarGrupoSlot, editarIdExcelSlot, renombrarMateria, usoMateria } from "@/app/actions";
+import { TipoClase, plantelCorto } from "@/lib/ui";
 
 const TIPOS = ["DISCIPLINAR", "MÓDULO 1", "MÓDULO 2", "MÓDULO 3", "VIRTUAL"];
 
@@ -95,6 +95,152 @@ export function CeldaMateria({
             Renombrar…
           </button>
         )}
+        <button onClick={() => { setError(null); setEditando(false); }} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+      </span>
+      {error && <span className="max-w-[280px] text-xs text-red-600 whitespace-normal">{error}</span>}
+    </span>
+  );
+}
+
+// Celda de PLANTEL: select estricto de los planteles existentes (cero texto libre).
+// El servidor además bloquea clases compactadas (la compactación es por plantel).
+export function CeldaPlantel({ slotId, plantel, planteles }: { slotId: number; plantel: string | null; planteles: string[] }) {
+  const [editando, setEditando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  if (!editando) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span>{plantel ? plantelCorto(plantel) : <span className="text-slate-300">—</span>}</span>
+        <button title="Corregir plantel" onClick={(e) => { e.stopPropagation(); setEditando(true); }} className={lapiz}>✎</button>
+      </span>
+    );
+  }
+
+  return (
+    <span onClick={(e) => e.stopPropagation()} className="inline-flex flex-col items-start gap-1">
+      <span className="inline-flex items-center gap-2">
+        <select
+          autoFocus
+          disabled={pending}
+          defaultValue={plantel ?? ""}
+          onKeyDown={(e) => { if (e.key === "Escape") { setError(null); setEditando(false); } }}
+          onChange={(e) => {
+            const p = e.target.value;
+            if (!p || p === plantel) return;
+            start(async () => {
+              const r = await editarPlantelSlot(slotId, p);
+              if (r.error) setError(r.error);   // editor abierto para corregir
+              else { setError(null); setEditando(false); }
+            });
+          }}
+          className={selectCss}
+        >
+          <option value="" disabled>— elige plantel —</option>
+          {planteles.map((p) => <option key={p} value={p}>{plantelCorto(p)}</option>)}
+        </select>
+        <button onClick={() => { setError(null); setEditando(false); }} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+      </span>
+      {error && <span className="max-w-[280px] text-xs text-red-600 whitespace-normal">{error}</span>}
+    </span>
+  );
+}
+
+// Celda de GRUPO: select estricto del catálogo de grupos. El servidor rechaza duplicados
+// (mismo grupo + materia + tipo en el ciclo) y clases compactadas.
+export function CeldaGrupo({ slotId, grupoId, clave, grupos }: {
+  slotId: number; grupoId: number | null; clave: string | null;
+  grupos: { id: number; clave: string }[];
+}) {
+  const [editando, setEditando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  if (!editando) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span>{clave ?? <span className="text-slate-300">—</span>}</span>
+        <button title="Corregir grupo" onClick={(e) => { e.stopPropagation(); setEditando(true); }} className={lapiz}>✎</button>
+      </span>
+    );
+  }
+
+  return (
+    <span onClick={(e) => e.stopPropagation()} className="inline-flex flex-col items-start gap-1">
+      <span className="inline-flex items-center gap-2">
+        <select
+          autoFocus
+          disabled={pending}
+          defaultValue={grupoId ?? ""}
+          onKeyDown={(e) => { if (e.key === "Escape") { setError(null); setEditando(false); } }}
+          onChange={(e) => {
+            const id = Number(e.target.value);
+            if (!id || id === grupoId) return;
+            start(async () => {
+              const r = await editarGrupoSlot(slotId, id);
+              if (r.error) setError(r.error);   // editor abierto para corregir
+              else { setError(null); setEditando(false); }
+            });
+          }}
+          className={selectCss}
+        >
+          <option value="" disabled>— elige grupo —</option>
+          {grupos.map((g) => <option key={g.id} value={g.id}>{g.clave}</option>)}
+        </select>
+        <button onClick={() => { setError(null); setEditando(false); }} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+      </span>
+      {error && <span className="max-w-[280px] text-xs text-red-600 whitespace-normal">{error}</span>}
+    </span>
+  );
+}
+
+// Celda de ID (folio del Excel): número con Enter para guardar. El servidor valida que sea
+// entero positivo y que NO se repita dentro del mismo plantel (la llave real es ID+plantel).
+export function CeldaIdExcel({ slotId, idExcel }: { slotId: number; idExcel: number | null }) {
+  const [editando, setEditando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const [draft, setDraft] = useState(String(idExcel ?? ""));
+
+  const guardar = () => {
+    const t = draft.trim();
+    const val = t === "" ? null : Number(t);
+    if ((val ?? 0) === (idExcel ?? 0) && (val == null) === (idExcel == null)) { setEditando(false); setError(null); return; }
+    start(async () => {
+      const r = await editarIdExcelSlot(slotId, val);
+      if (r.error) setError(r.error);   // editor abierto para corregir
+      else { setError(null); setEditando(false); }
+    });
+  };
+
+  if (!editando) {
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <span>{idExcel ?? <span className="text-slate-300">—</span>}</span>
+        <button title="Corregir ID" onClick={(e) => { e.stopPropagation(); setDraft(String(idExcel ?? "")); setEditando(true); }} className={lapiz}>✎</button>
+      </span>
+    );
+  }
+
+  return (
+    <span onClick={(e) => e.stopPropagation()} className="inline-flex flex-col items-start gap-1">
+      <span className="inline-flex items-center gap-1.5">
+        <input
+          autoFocus
+          type="number"
+          min={1}
+          step={1}
+          disabled={pending}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") guardar();
+            if (e.key === "Escape") { setError(null); setEditando(false); }
+          }}
+          className="px-2 py-1 rounded-md border border-slate-300 text-sm bg-white w-24"
+        />
+        <button onClick={guardar} disabled={pending} title="Guardar" className="text-xs text-green-700 hover:underline">✓</button>
         <button onClick={() => { setError(null); setEditando(false); }} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
       </span>
       {error && <span className="max-w-[280px] text-xs text-red-600 whitespace-normal">{error}</span>}

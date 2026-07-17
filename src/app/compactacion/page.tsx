@@ -1,6 +1,6 @@
 import {
   getCandidatosCompactacion, getCompactacionesActivas, getDocentesParaMateria,
-  getSlotsLibresParaMateria,
+  getSlotsLibresParaMateria, getMaterias,
   type DocenteCandidato, type CompactGrupo,
 } from "@/lib/queries";
 import { CompactacionCliente } from "./cliente";
@@ -10,9 +10,10 @@ import { CompactacionCliente } from "./cliente";
 // que se abre en varios grupos/carreras del mismo plantel. Todo es ADITIVO y REVERSIBLE:
 // crear una compactación liga slots a un contenedor; "Separar" los vuelve a soltar.
 export default async function CompactacionPage() {
-  const [candidatos, compactaciones] = await Promise.all([
+  const [candidatos, compactaciones, materias] = await Promise.all([
     getCandidatosCompactacion(),
     getCompactacionesActivas(),
+    getMaterias(),
   ]);
 
   // Docentes recomendados por materia candidata (para el selector "asignar docente" al compactar).
@@ -43,6 +44,7 @@ export default async function CompactacionPage() {
       compactaciones={compactaciones}
       docentesPorMateria={docentesPorMateria}
       libresPorClave={libresPorClave}
+      materias={materias}
     />
   );
 }

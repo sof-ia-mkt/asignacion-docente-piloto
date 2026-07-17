@@ -122,6 +122,33 @@ export async function snapMateria(materiaId: number): Promise<SnapRow> {
   };
 }
 
+export async function snapSlotPlantel(slotId: number): Promise<SnapRow> {
+  const [r] = await q<{ plantel: string | null }>(
+    "select plantel from slots where id=$1", [slotId]);
+  return {
+    kind: "row", tabla: "slots", clave: { id: slotId },
+    campos: r ? { plantel: r.plantel } : null,
+  };
+}
+
+export async function snapSlotGrupo(slotId: number): Promise<SnapRow> {
+  const [r] = await q<{ grupo_id: number | null }>(
+    "select grupo_id from slots where id=$1", [slotId]);
+  return {
+    kind: "row", tabla: "slots", clave: { id: slotId },
+    campos: r ? { grupo_id: r.grupo_id } : null,
+  };
+}
+
+export async function snapSlotIdExcel(slotId: number): Promise<SnapRow> {
+  const [r] = await q<{ id_excel: number | null }>(
+    "select id_excel from slots where id=$1", [slotId]);
+  return {
+    kind: "row", tabla: "slots", clave: { id: slotId },
+    campos: r ? { id_excel: r.id_excel } : null,
+  };
+}
+
 export async function snapSlotApertura(slotId: number): Promise<SnapRow> {
   const [r] = await q<{ no_apertura: boolean }>(
     "select no_apertura from slots where id=$1", [slotId]);
