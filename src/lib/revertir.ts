@@ -10,6 +10,7 @@
 // El motor es GENÉRICO: no sabe de asignaciones ni aulas, solo aplica Snaps {tabla, clave, campos}.
 // Así, agregar una acción reversible nueva = guardar su Snap; aquí no se toca nada.
 import { q, pool } from "./db";
+import { sqlMismoPeriodo } from "./queries";
 import { registrarCambio, type EntidadBitacora } from "./audit";
 
 // Ejecutor de consultas: el módulo `q` (con su pool y reintentos) o el cliente de una
@@ -323,6 +324,22 @@ function comoSnap(v: unknown): Snap | null {
   return null;
 }
 
+// Asignaciones {slot_id → profesor_id} contenidas en una foto. Sirve para la regla dura del
+// deshacer: reinstalar a un docente no debe crear un empalme de horario (ver aplicarReversion).
+function asignacionesDeSnap(s: Snap | null): Map<number, number | null> {
+  const out = new Map<number, number | null>();
+  const visita = (x: Snap): void => {
+    if (x.kind === "multi") { x.snaps.forEach(visita); return; }
+    if (x.kind !== "row" || x.tabla !== "asignaciones") return;
+    const slotId = (x.clave as Record<string, unknown>).slot_id;
+    if (typeof slotId !== "number" || !Number.isFinite(slotId)) return;
+    const prof = x.campos?.profesor_id;
+    out.set(slotId, typeof prof === "number" ? prof : null);
+  };
+  if (s) visita(s);
+  return out;
+}
+
 // Slots que una foto toca (directo en `slots` o vía `asignaciones.slot_id`). Sirve para el
 // candado de ciclo del deshacer: de estos slots se deriva a qué ciclo pertenece el movimiento.
 function slotsDeSnap(s: Snap | null, out: Set<number>): void {
@@ -372,6 +389,18 @@ export async function aplicarReversion(id: number): Promise<ResultadoReversion> 
     client.query(sql, params).then((r) => r.rows as T[]);
   try {
     await client.query("begin");
+    // Regla dura también al deshacer: reinstalar a un docente (revertir un "quitó", o un
+    // "asignó" que había reemplazado a otro) no debe crear un empalme de horario. Solo aplica
+    // cuando la reversión CAMBIA el docente del slot a uno distinto del actual; revertir un
+    // cambio de estado (p. ej. "confirmó") deja al mismo docente y no se verifica.
+    const objetivo = asignacionesDeSnap(antes);
+    const trasAccion = asignacionesDeSnap(despues);
+    const reinstala = [...objetivo].filter((par): par is [number, number] =>
+      par[1] != null && trasAccion.get(par[0]) !== par[1]);
+    // Candado por docente (mismo que asignar/compactar), ANTES de bloquear filas y en orden
+    // ascendente: serializa contra asignaciones concurrentes sin riesgo de interbloqueo.
+    for (const prof of [...new Set(reinstala.map(([, p]) => p))].sort((a, b) => a - b))
+      await exec("select pg_advisory_xact_lock(492813475, $1::int)", [prof]);
     // Candado anti-conflicto: el estado actual (bloqueado) debe seguir siendo el que dejó esta acción.
     const actual = await leerActual(despues, exec, true);
     if (!coincide(actual, despues)) {
@@ -380,6 +409,32 @@ export async function aplicarReversion(id: number): Promise<ResultadoReversion> 
         ok: false,
         error: "No se pudo deshacer: ese dato ya cambió después de este movimiento. Revisa el estado actual antes de revertir, para no pisar un cambio más reciente.",
       };
+    }
+    // Chequeo de empalme del docente a reinstalar (misma consulta de traslape que asignar,
+    // excluyendo los slots de esta misma reversión: los hermanos de una compactada no chocan entre sí).
+    if (reinstala.length) {
+      const propios = [...objetivo.keys()];
+      for (const [slotId, prof] of reinstala) {
+        const [choque] = await exec<{ mat: string }>(
+          `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
+             from slots s
+             join slots s2 on s2.ciclo_id = s.ciclo_id and s2.id <> all($3)
+              and not s2.no_apertura
+              and s2.dia = s.dia and s2.hora_inicio < s.hora_fin and s.hora_inicio < s2.hora_fin
+              and ${sqlMismoPeriodo("s.tipo", "s2.tipo")}
+             join asignaciones a2 on a2.slot_id = s2.id and a2.profesor_id = $2
+             left join materias m2 on m2.id = s2.materia_id
+             left join grupos g2 on g2.id = s2.grupo_id
+            where s.id = $1 and s.dia is not null and s.hora_inicio is not null and s.hora_fin is not null
+            limit 1`, [slotId, prof, propios]);
+        if (choque) {
+          await client.query("rollback");
+          return {
+            ok: false,
+            error: `No se puede deshacer: reinstalaría al docente en esta clase, pero ahora ya da "${choque.mat}" a esa misma hora (se empalmaría). Libéralo de esa clase primero si realmente quieres revertir.`,
+          };
+        }
+      }
     }
     await aplicar(antes, exec);
     await client.query("commit");
