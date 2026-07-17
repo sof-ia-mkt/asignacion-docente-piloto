@@ -26,6 +26,9 @@ export function CeldaMateria({
   materias: { id: number; nombre: string }[];
 }) {
   const [editando, setEditando] = useState(false);
+  // Error del servidor mostrado inline (no window.alert): el editor SIGUE abierto para
+  // corregir o cancelar, en vez de perder el contexto de edición.
+  const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   // En los datos reales hay materias con nombre vacío (typo de origen): se señalan en ámbar
@@ -58,46 +61,50 @@ export function CeldaMateria({
     );
     if (nuevo == null) return;
     const r = await renombrarMateria(materiaId, nuevo);
-    if (r.error) window.alert(r.error);
-    else setEditando(false);
+    if (r.error) setError(r.error);          // editor abierto: se puede reintentar o cancelar
+    else { setError(null); setEditando(false); }
   }
 
   return (
-    <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-2">
-      <select
-        autoFocus
-        disabled={pending}
-        // Si la materia actual no tiene nombre (se filtra de las opciones), arranca en el
-        // placeholder: si no, el select caería en la primera opción real y elegirla no
-        // dispararía onChange (no habría "cambio").
-        defaultValue={sinNombre ? "" : materiaId ?? ""}
-        onKeyDown={(e) => { if (e.key === "Escape") setEditando(false); }}
-        onChange={(e) => {
-          const id = Number(e.target.value);
-          if (!id || id === materiaId) return;
-          start(async () => {
-            const r = await editarMateriaSlot(slotId, id);
-            if (r.error) window.alert(r.error);
-            setEditando(false);
-          });
-        }}
-        className={selectCss}
-      >
-        <option value="" disabled>— elige materia —</option>
-        {materias.filter((m) => m.nombre.trim()).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
-      </select>
-      {materiaId != null && (
-        <button onClick={renombrar} disabled={pending} className="text-xs text-blue-700 hover:underline whitespace-nowrap">
-          Renombrar…
-        </button>
-      )}
-      <button onClick={() => setEditando(false)} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+    <span onClick={(e) => e.stopPropagation()} className="inline-flex flex-col items-start gap-1">
+      <span className="inline-flex items-center gap-2">
+        <select
+          autoFocus
+          disabled={pending}
+          // Si la materia actual no tiene nombre (se filtra de las opciones), arranca en el
+          // placeholder: si no, el select caería en la primera opción real y elegirla no
+          // dispararía onChange (no habría "cambio").
+          defaultValue={sinNombre ? "" : materiaId ?? ""}
+          onKeyDown={(e) => { if (e.key === "Escape") { setError(null); setEditando(false); } }}
+          onChange={(e) => {
+            const id = Number(e.target.value);
+            if (!id || id === materiaId) return;
+            start(async () => {
+              const r = await editarMateriaSlot(slotId, id);
+              if (r.error) setError(r.error);   // editor abierto para corregir
+              else { setError(null); setEditando(false); }
+            });
+          }}
+          className={selectCss}
+        >
+          <option value="" disabled>— elige materia —</option>
+          {materias.filter((m) => m.nombre.trim()).map((m) => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+        </select>
+        {materiaId != null && (
+          <button onClick={renombrar} disabled={pending} className="text-xs text-blue-700 hover:underline whitespace-nowrap">
+            Renombrar…
+          </button>
+        )}
+        <button onClick={() => { setError(null); setEditando(false); }} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+      </span>
+      {error && <span className="max-w-[280px] text-xs text-red-600 whitespace-normal">{error}</span>}
     </span>
   );
 }
 
 export function CeldaTipo({ slotId, tipo }: { slotId: number; tipo: string | null }) {
   const [editando, setEditando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
   if (!editando) {
@@ -114,27 +121,30 @@ export function CeldaTipo({ slotId, tipo }: { slotId: number; tipo: string | nul
   }
 
   return (
-    <span onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-2">
-      <select
-        autoFocus
-        disabled={pending}
-        defaultValue={tipo ?? ""}
-        onKeyDown={(e) => { if (e.key === "Escape") setEditando(false); }}
-        onChange={(e) => {
-          const t = e.target.value;
-          if (!t || t === tipo) return;
-          start(async () => {
-            const r = await editarTipoSlot(slotId, t);
-            if (r.error) window.alert(r.error);
-            setEditando(false);
-          });
-        }}
-        className={selectCss}
-      >
-        <option value="" disabled>— elige tipo —</option>
-        {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
-      </select>
-      <button onClick={() => setEditando(false)} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+    <span onClick={(e) => e.stopPropagation()} className="inline-flex flex-col items-start gap-1">
+      <span className="inline-flex items-center gap-2">
+        <select
+          autoFocus
+          disabled={pending}
+          defaultValue={tipo ?? ""}
+          onKeyDown={(e) => { if (e.key === "Escape") { setError(null); setEditando(false); } }}
+          onChange={(e) => {
+            const t = e.target.value;
+            if (!t || t === tipo) return;
+            start(async () => {
+              const r = await editarTipoSlot(slotId, t);
+              if (r.error) setError(r.error);   // editor abierto para corregir
+              else { setError(null); setEditando(false); }
+            });
+          }}
+          className={selectCss}
+        >
+          <option value="" disabled>— elige tipo —</option>
+          {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <button onClick={() => { setError(null); setEditando(false); }} title="Cancelar" className="text-xs text-slate-400 hover:text-slate-600">✕</button>
+      </span>
+      {error && <span className="max-w-[280px] text-xs text-red-600 whitespace-normal">{error}</span>}
     </span>
   );
 }

@@ -6,6 +6,7 @@ import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge, esAsincronica
 import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, eliminarSlot, marcarNoApertura, reactivarSlot } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { BotonSubmit } from "@/lib/boton-submit";
+import { FormAccion } from "@/lib/form-accion";
 import { FormHorario } from "./form-horario";
 
 const DIAS = ["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO", "N/A"];
@@ -289,13 +290,12 @@ export default async function SlotPage({
                     ) : c.choque ? (
                       <span className="text-xs text-red-700" title={`Ocupado: ya da "${c.choque}" a esta misma hora. No se puede empalmar.`}>ocupado</span>
                     ) : (
-                      <form action={asignar.bind(null, slotId, c.profesor_id, c.puntaje, c.razon)}>
-                        <ConfirmButton
-                          message={confirmAsignar(c.nombre)}
-                          className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-800">
-                          Asignar
-                        </ConfirmButton>
-                      </form>
+                      <FormAccion
+                        action={asignar.bind(null, slotId, c.profesor_id, c.puntaje, c.razon)}
+                        confirm={confirmAsignar(c.nombre)}
+                        className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-800">
+                        Asignar
+                      </FormAccion>
                     )}
                   </td>
                 </tr>
@@ -359,13 +359,12 @@ export default async function SlotPage({
                       ) : p.choque ? (
                         <span className="text-xs text-red-700" title={`Ocupado: ya da "${p.choque}" a esta misma hora. No se puede empalmar.`}>ocupado</span>
                       ) : (
-                        <form action={asignar.bind(null, slotId, p.id, 0, "Asignación manual por coordinación")}>
-                          <ConfirmButton
-                            message={confirmAsignar(p.nombre)}
-                            className="px-2.5 py-1 rounded-md border border-slate-300 text-slate-700 text-xs hover:bg-slate-50">
-                            Asignar a mano
-                          </ConfirmButton>
-                        </form>
+                        <FormAccion
+                          action={asignar.bind(null, slotId, p.id, 0, "Asignación manual por coordinación")}
+                          confirm={confirmAsignar(p.nombre)}
+                          className="px-2.5 py-1 rounded-md border border-slate-300 text-slate-700 text-xs hover:bg-slate-50">
+                          Asignar a mano
+                        </FormAccion>
                       )}
                     </td>
                   </tr>

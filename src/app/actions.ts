@@ -196,17 +196,20 @@ export async function crearDocente(_prev: CrearDocenteState, fd: FormData): Prom
 //     podríamos verificar el empalme. Las ASINCRÓNICAS (en línea, sin hora por diseño) sí
 //     se pueden asignar: no ocupan un horario, así que no chocan con nada.
 // La UI ya oculta el botón en estos casos; este candado protege ante pantallas viejas o
-// llamadas directas. Lanza un error claro (en español) si se intenta violar la regla.
-export async function asignar(slotId: number, profesorId: number, puntaje?: number, razon?: string) {
+// llamadas directas. Los errores esperados se DEVUELVEN como { error } (no se lanzan): un
+// throw desde una server action se redacta en producción y el usuario no vería el mensaje.
+export async function asignar(slotId: number, profesorId: number, puntaje?: number, razon?: string): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   const [s] = await q<{ modalidad: string | null; dia: string | null; hora_inicio: string | null; hora_fin: string | null; compactacion_id: number | null; tipo: string | null }>(
     `select modalidad, dia, hora_inicio, hora_fin, compactacion_id, tipo from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
-  if (!s) throw new Error("La clase no existe o no es del cuatrimestre a asignar.");
+  if (!s) return { error: "La clase no existe o no es del cuatrimestre a asignar." };
   const asincronica = (s.modalidad ?? "").toUpperCase().includes("ASINCR");
   const sinHorario = !s.dia || !s.hora_inicio || !s.hora_fin;
   if (sinHorario && !asincronica)
-    throw new Error("Esta clase presencial aún no tiene horario. Captura el día y la hora antes de asignar un docente (así se evita empalmar al maestro).");
+    return { error: "Esta clase presencial aún no tiene horario. Captura el día y la hora antes de asignar un docente (así se evita empalmar al maestro)." };
   // Si la clase está COMPACTADA, el docente cubre TODOS sus grupos (es una sola clase):
   // asignamos a todos los slots miembros y el choque ignora a los hermanos (no chocan entre sí).
   const objetivos = s.compactacion_id
@@ -258,7 +261,9 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
     await client.query("commit");
   } catch (e) {
     await client.query("rollback");
-    throw e;
+    // Error esperado (choque) o inesperado (BD): en ambos casos el usuario ve el motivo
+    // inline en el botón, en vez de la pantalla de error genérica.
+    return { error: e instanceof Error ? e.message : "No se pudo asignar (error desconocido)." };
   } finally {
     client.release();
   }
@@ -570,15 +575,19 @@ export async function crearAula(_prev: CrearAulaState, fd: FormData): Promise<Cr
   return {};
 }
 
+export type EditarAulaState = { error?: string };
+
 // Edita tipo y capacidad de un salón existente (la clave es su identificador y no se cambia aquí).
 // Capturar la capacidad faltante permite que el acomodo automático vuelva a considerar el salón.
-export async function editarAula(aulaId: number, fd: FormData) {
+// Una capacidad inválida se RECHAZA con mensaje (antes se guardaba NULL en silencio, borrando el dato).
+export async function editarAula(aulaId: number, _prev: EditarAulaState, fd: FormData): Promise<EditarAulaState> {
   await exigirSesionActiva();
   const tipo = String(fd.get("tipo") ?? "").trim() || null;
   const cap = parseCapacidad(String(fd.get("capacidad") ?? ""));
+  if (!cap.ok) return { error: "La capacidad debe ser un número entero mayor que 0 (o déjala vacía). No se guardó." };
   const antes = await snapAula(aulaId);   // foto del tipo/cupo previos (para deshacer)
   await q("update aulas set tipo=$1, capacidad=$2 where id=$3",
-    [tipo, cap.ok ? cap.val : null, aulaId]);
+    [tipo, cap.val, aulaId]);
   const [a] = await q<{ clave: string }>("select clave from aulas where id=$1", [aulaId]);
   await registrarCambio({
     entidad: "aula",
@@ -596,6 +605,7 @@ export async function editarAula(aulaId: number, fd: FormData) {
   revalidatePath("/aulas");
   revalidatePath("/alertas");
   revalidatePath("/");
+  return {};
 }
 
 // Borra un salón SOLO si ninguna clase de septiembre lo usa (si no, no hace nada: protege los datos).
@@ -732,12 +742,16 @@ export async function confirmarPropuesta(profesorId: number): Promise<PropuestaR
 // SUBE a +40/'historial': antes el "do nothing" la descartaba en silencio y el docente seguía
 // sin aparecer como candidato aunque coordinación lo marcara explícitamente.
 // Una candidatura nueva puede resolver un "sin_candidato", así que recalculamos alertas.
-export async function agregarCandidatura(profesorId: number, fd: FormData) {
+export type CandidaturaState = { error?: string; ok?: string };
+
+export async function agregarCandidatura(profesorId: number, _prev: CandidaturaState, fd: FormData): Promise<CandidaturaState> {
   await exigirSesionActiva();
   const materiaNombre = String(fd.get("materia") ?? "").trim();
-  if (!materiaNombre) return;
+  if (!materiaNombre) return { error: "Escribe el nombre de la materia." };
   const [m] = await q<{ id: number; nombre: string }>("select id, nombre from materias where lower(nombre)=lower($1)", [materiaNombre]);
-  if (!m) return;   // sólo materias que ya existen en el catálogo
+  // Sólo materias que ya existen en el catálogo (antes esto era un return mudo: el usuario
+  // pulsaba "Agregar" y no pasaba nada, sin saber por qué).
+  if (!m) return { error: `"${materiaNombre}" no está en el catálogo. Elígela de la lista de sugerencias, tal como aparece escrita.` };
   const antes = await snapCandidatura(profesorId, m.id);   // foto del conjunto previo (para deshacer)
   // 'returning' solo devuelve fila si realmente insertó o subió el puntaje (el WHERE del
   // do update filtra los casos "ya tenía 40 o más": ahí no hay cambio ni bitácora).
@@ -762,6 +776,9 @@ export async function agregarCandidatura(profesorId: number, fd: FormData) {
   await recalcularAlertas();
   revalidatePath(`/profesores/${profesorId}`);
   revalidatePath(`/profesores/${profesorId}/editar`);
+  return ins.length
+    ? { ok: `"${m.nombre}" agregada como materia que puede dar (+40).` }
+    : { ok: `Ya tenía "${m.nombre}" registrada con señal fuerte; no hubo cambios.` };
 }
 
 // Quita una materia de las que el docente puede dar (todas sus fuentes para esa materia).

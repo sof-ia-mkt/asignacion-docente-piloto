@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { asignar } from "@/app/actions";
 import { TipoClase, plantelCorto } from "@/lib/ui";
-import { ConfirmButton } from "@/lib/confirm-button";
+import { FormAccion } from "@/lib/form-accion";
 
 // Un grupo (slot) de septiembre todavía SIN docente, de una materia que este profesor puede dar.
 export type GrupoAbierto = {
@@ -20,7 +20,7 @@ const horario = (g: GrupoAbierto) =>
   g.dia ? `${g.dia} ${g.hora_inicio ?? "—"}–${g.hora_fin ?? "—"}` : "Sin horario";
 
 export function MateriasAsignables({
-  impartio, cvFuerte, afinidad, profesorId, nombre, disponibles,
+  impartio, cvFuerte, afinidad, profesorId, disponibles,
 }: {
   impartio: MateriaReco[]; cvFuerte: MateriaReco[]; afinidad: MateriaReco[];
   profesorId: number; nombre: string; disponibles: number;
@@ -83,24 +83,27 @@ export function MateriasAsignables({
           </div>
           {g.choque && (
             <p className="mt-0.5 text-xs font-medium text-red-700">
-              Choca: ya tiene «{g.choque}» a esa hora — lo empalmarías.
+              Choca: ya tiene «{g.choque}» a esa hora — no se puede empalmar. Libéralo de esa clase o cambia el horario.
             </p>
           )}
         </div>
-        <form action={asignarBind} className="shrink-0">
-          {g.choque ? (
-            <ConfirmButton
-              message={`«${g.choque}» se encima con esta clase a la misma hora. Si asignas a ${nombre} aquí, quedará con un choque de horario. ¿Asignar de todos modos?`}
-              className="px-3 py-1.5 rounded-md border border-red-300 bg-white text-red-700 text-xs hover:bg-red-50 whitespace-nowrap">
-              Asignar de todos modos
-            </ConfirmButton>
-          ) : (
-            <button type="submit"
-              className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-800 whitespace-nowrap">
+        {/* Empalme = regla dura del servidor, sin excepciones. Antes aquí había un botón
+            "Asignar de todos modos" que prometía lo que asignar() siempre rechaza: el
+            usuario confirmaba y recibía la pantalla de error. Ahora se muestra el bloqueo. */}
+        {g.choque ? (
+          <span className="shrink-0 px-3 py-1.5 text-xs text-red-700"
+            title={`Ocupado: ya da "${g.choque}" a esta misma hora. No se puede empalmar.`}>
+            ocupado
+          </span>
+        ) : (
+          <div className="shrink-0">
+            <FormAccion action={asignarBind}
+              className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-xs hover:bg-slate-800 whitespace-nowrap"
+              pendingText="Asignando…">
               Asignar aquí
-            </button>
-          )}
-        </form>
+            </FormAccion>
+          </div>
+        )}
       </div>
     );
   };

@@ -3,7 +3,7 @@
 // hay muchos salones (p. ej. 63 de teoría). Cada fila sigue siendo un mini-formulario
 // con server actions (editar tipo/capacidad, borrar) — eso no cambia, solo limitamos
 // cuántas filas se pintan a la vez.
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { Panel } from "@/lib/ui";
 import { editarAula, eliminarAula } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
@@ -19,6 +19,24 @@ export type AulaFila = {
 
 const POR_PAGINA = 25;
 const cell = "px-2 py-1.5 rounded-md border border-slate-300 text-sm";
+
+// Mini-form de edición de una fila, con useActionState: si la capacidad es inválida el
+// servidor la RECHAZA con { error } y aquí se muestra inline (antes se guardaba NULL en silencio).
+function FormEditarAula({ aula }: { aula: AulaFila }) {
+  const [state, dispatch] = useActionState(editarAula.bind(null, aula.id), {});
+  return (
+    <form action={dispatch} className="flex flex-wrap items-center gap-1">
+      <input name="tipo" defaultValue={aula.tipo ?? ""} list="tipos-aula-edit"
+        placeholder="—" className={cell + " w-28"} />
+      <input name="capacidad" type="number" min="1" defaultValue={aula.capacidad ?? ""}
+        placeholder="s/cap" className={cell + " w-20"} />
+      <BotonSubmit className="px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs hover:bg-slate-200" pendingText="Guardando…">
+        Guardar
+      </BotonSubmit>
+      {state.error && <p className="w-full text-xs text-red-600">{state.error}</p>}
+    </form>
+  );
+}
 
 export function TablaAulas({ titulo, lista }: { titulo: string; lista: AulaFila[] }) {
   const [visibles, setVisibles] = useState(POR_PAGINA);
@@ -46,15 +64,7 @@ export function TablaAulas({ titulo, lista }: { titulo: string; lista: AulaFila[
                 <tr key={a.id} className={a.capacidad == null ? "bg-amber-50/60" : ""}>
                   <td className="py-1.5 pr-3 text-slate-800 break-words">{a.clave}</td>
                   <td className="py-1.5 pr-2" colSpan={2}>
-                    <form action={editarAula.bind(null, a.id)} className="flex flex-wrap items-center gap-1">
-                      <input name="tipo" defaultValue={a.tipo ?? ""} list="tipos-aula-edit"
-                        placeholder="—" className={cell + " w-28"} />
-                      <input name="capacidad" type="number" min="1" defaultValue={a.capacidad ?? ""}
-                        placeholder="s/cap" className={cell + " w-20"} />
-                      <BotonSubmit className="px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs hover:bg-slate-200" pendingText="Guardando…">
-                        Guardar
-                      </BotonSubmit>
-                    </form>
+                    <FormEditarAula aula={a} />
                   </td>
                   <td className="py-1.5 pr-2 text-slate-500 whitespace-nowrap">
                     {a.en_uso > 0 ? `${a.en_uso} clase${a.en_uso === 1 ? "" : "s"}` : "libre"}

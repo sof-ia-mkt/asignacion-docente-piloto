@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProfesor, getMaterias } from "@/lib/queries";
 import { nombresCoordinadores } from "@/lib/usuarios-db";
-import { agregarCandidatura, quitarCandidatura } from "@/app/actions";
+import { quitarCandidatura } from "@/app/actions";
 import { ConfirmButton } from "@/lib/confirm-button";
 import { EditarDocenteForm } from "./form";
+import { FormCandidatura } from "./form-candidatura";
 import { CVUpload } from "./cv-upload";
 
 export default async function EditarDocentePage({ params }: { params: Promise<{ id: string }> }) {
@@ -75,19 +76,8 @@ export default async function EditarDocentePage({ params }: { params: Promise<{ 
           </ul>
         )}
 
-        {/* Agregar una materia del catálogo */}
-        <form action={agregarCandidatura.bind(null, profId)} className="mt-4 flex flex-wrap items-end gap-2">
-          <div className="grow min-w-64">
-            <label className="block text-sm font-medium text-slate-700 mb-1">Agregar una materia que puede dar</label>
-            <input name="materia" list="materias-disponibles" required
-              className="w-full px-3 py-2 rounded-md border border-slate-300 text-sm"
-              placeholder="Escribe el nombre de la materia del catálogo…" />
-            <datalist id="materias-disponibles">
-              {disponibles.map((m) => <option key={m.id} value={m.nombre} />)}
-            </datalist>
-          </div>
-          <button className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">Agregar</button>
-        </form>
+        {/* Agregar una materia del catálogo (client component: muestra errores/éxito inline) */}
+        <FormCandidatura profesorId={profId} disponibles={disponibles} />
         <p className="mt-1 text-xs text-slate-400">Sólo materias que ya existen en el catálogo. Cuenta como recomendación fuerte (+40).</p>
       </div>
     </div>
