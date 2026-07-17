@@ -334,7 +334,8 @@ export async function confirmarSugeridas(
 ) {
   await exigirSesionActiva();
   const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
-  const conds: string[] = [`s.ciclo_id = ${act.id}`];
+  // MISMO alcance que contarSugeridas (el número del botón): nunca tocar clases parqueadas.
+  const conds: string[] = [`s.ciclo_id = ${act.id}`, "not s.no_apertura"];
   const params: unknown[] = [];
   if (filtro.plantel) { params.push(filtro.plantel); conds.push(`s.plantel = $${params.length}`); }
   if (filtro.cuatri) { params.push(filtro.cuatri); conds.push(`s.cuatrimestre = $${params.length}`); }
@@ -727,6 +728,9 @@ export async function confirmarPropuesta(profesorId: number): Promise<PropuestaR
 }
 
 // Marca que el docente PUEDE dar una materia del catálogo (candidatura manual, +40 como el historial).
+// Si ya existía una candidatura MÁS DÉBIL (p. ej. 'cv' con 15 pts, bajo el umbral de 25), se
+// SUBE a +40/'historial': antes el "do nothing" la descartaba en silencio y el docente seguía
+// sin aparecer como candidato aunque coordinación lo marcara explícitamente.
 // Una candidatura nueva puede resolver un "sin_candidato", así que recalculamos alertas.
 export async function agregarCandidatura(profesorId: number, fd: FormData) {
   await exigirSesionActiva();
@@ -735,10 +739,15 @@ export async function agregarCandidatura(profesorId: number, fd: FormData) {
   const [m] = await q<{ id: number; nombre: string }>("select id, nombre from materias where lower(nombre)=lower($1)", [materiaNombre]);
   if (!m) return;   // sólo materias que ya existen en el catálogo
   const antes = await snapCandidatura(profesorId, m.id);   // foto del conjunto previo (para deshacer)
+  // 'returning' solo devuelve fila si realmente insertó o subió el puntaje (el WHERE del
+  // do update filtra los casos "ya tenía 40 o más": ahí no hay cambio ni bitácora).
   const ins = await q<{ materia_id: number }>(
     `insert into materia_candidatos (profesor_id, materia_id, fuente, puntaje, razon)
      values ($1,$2,'historial',40,'Agregado por coordinación: puede dar esta materia')
-     on conflict (profesor_id, materia_id) do nothing returning materia_id`, [profesorId, m.id]);
+     on conflict (profesor_id, materia_id) do update
+       set fuente = excluded.fuente, puntaje = excluded.puntaje, razon = excluded.razon
+       where materia_candidatos.puntaje < excluded.puntaje
+     returning materia_id`, [profesorId, m.id]);
   if (ins.length) {
     const [p] = await q<{ nombre: string }>("select nombre from profesores where id=$1", [profesorId]);
     await registrarCambio({
@@ -1321,31 +1330,39 @@ export async function compactar(
     return { ok: false, error: "Los grupos están en horarios distintos. Elige a qué día y hora quedará la clase compactada." };
   }
 
-  // Choque del docente (si se asigna desde aquí): no debe encimar con OTRAS clases suyas a esa hora.
   const docenteId = opts.docenteId ?? null;
   const efDia = horarioAplicar?.dia ?? filas[0].dia;
   const efHi = horarioAplicar?.hi ?? filas[0].hora_inicio;
   const efHf = horarioAplicar?.hf ?? filas[0].hora_fin;
-  if (docenteId && efDia && efHi && efHf) {
-    const [choque] = await q<{ mat: string }>(
-      `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
-         from asignaciones a2 join slots s2 on s2.id=a2.slot_id
-         left join materias m2 on m2.id=s2.materia_id
-         left join grupos g2 on g2.id=s2.grupo_id
-        where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
-          and not s2.no_apertura
-          and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
-          and ${sqlMismoPeriodo("$6", "s2.tipo")}
-        order by s2.hora_inicio limit 1`,
-      [docenteId, ids, efDia, efHi, efHf, filas[0].tipo]);
-    if (choque) return { ok: false, error: `El docente elegido ya da "${choque.mat}" a esa hora: no se puede asignar a la clase compactada sin empalmarlo.` };
-  }
 
   // Escritura atómica: contenedor + ligar slots + (opcional) homogeneizar horario y asignar docente.
   let nuevoId: number;
   const client = await pool.connect();
   try {
     await client.query("begin");
+    const exec = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows as T[]);
+    // Choque del docente (si se asigna desde aquí): no debe encimar con OTRAS clases suyas a esa
+    // hora. El chequeo va DENTRO de la transacción y tras el MISMO candado por docente que usa
+    // asignar(): dos coordinadores tocando al mismo docente a la vez se serializan aquí; el
+    // check-then-insert no puede pasar dos veces "en paralelo" y dejarlo doble-reservado.
+    if (docenteId) {
+      await exec("select pg_advisory_xact_lock(492813475, $1::int)", [docenteId]);
+      if (efDia && efHi && efHf) {
+        const [choque] = await exec<{ mat: string }>(
+          `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
+             from asignaciones a2 join slots s2 on s2.id=a2.slot_id
+             left join materias m2 on m2.id=s2.materia_id
+             left join grupos g2 on g2.id=s2.grupo_id
+            where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+              and not s2.no_apertura
+              and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+              and ${sqlMismoPeriodo("$6", "s2.tipo")}
+            order by s2.hora_inicio limit 1`,
+          [docenteId, ids, efDia, efHi, efHf, filas[0].tipo]);
+        if (choque) throw new Error(`el docente elegido ya da "${choque.mat}" a esa hora: no se puede asignar a la clase compactada sin empalmarlo.`);
+      }
+    }
     const { rows: [comp] } = await client.query<{ id: number }>(
       `insert into compactaciones (ciclo_id, materia_id, plantel, razon) values ($1,$2,$3,$4) returning id`,
       [act.id, materiaId, plantel, opts.razon?.trim() || null]);
@@ -1584,27 +1601,35 @@ export async function agregarACompactacion(
       error: `Algún grupo tiene una materia con distinto nombre (${[...new Set(filas.map((f) => f.materia))].filter(Boolean).join(" / ")}). Confirma que es la misma clase para agregarlo de todos modos.`,
     };
 
-  // Choque del docente de la clase contra OTRAS clases suyas a esa hora (excluye la propia clase y los nuevos).
   const efDia = base.dia, efHi = base.hora_inicio, efHf = base.hora_fin;
-  if (docenteClase && efDia && efHi && efHf) {
-    const excluir = [...new Set([...ids, ...miembros.map((m) => m.id)])];
-    const [choque] = await q<{ mat: string }>(
-      `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
-         from asignaciones a2 join slots s2 on s2.id=a2.slot_id
-         left join materias m2 on m2.id=s2.materia_id
-         left join grupos g2 on g2.id=s2.grupo_id
-        where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
-          and not s2.no_apertura
-          and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
-          and ${sqlMismoPeriodo("$6", "s2.tipo")}
-        order by s2.hora_inicio limit 1`,
-      [docenteClase, excluir, efDia, efHi, efHf, base.tipo]);
-    if (choque) return { ok: false, error: `El docente de la clase ya da "${choque.mat}" a esa hora: no se puede agregar este grupo sin empalmarlo.` };
-  }
 
   const client = await pool.connect();
   try {
     await client.query("begin");
+    const exec = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows as T[]);
+    // Choque del docente de la clase contra OTRAS clases suyas a esa hora (excluye la propia
+    // clase y los nuevos). DENTRO de la transacción y tras el candado por docente (mismo patrón
+    // que asignar/compactar): así no puede colarse una asignación concurrente entre el check
+    // y la escritura.
+    if (docenteClase) {
+      await exec("select pg_advisory_xact_lock(492813475, $1::int)", [docenteClase]);
+      if (efDia && efHi && efHf) {
+        const excluir = [...new Set([...ids, ...miembros.map((m) => m.id)])];
+        const [choque] = await exec<{ mat: string }>(
+          `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
+             from asignaciones a2 join slots s2 on s2.id=a2.slot_id
+             left join materias m2 on m2.id=s2.materia_id
+             left join grupos g2 on g2.id=s2.grupo_id
+            where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+              and not s2.no_apertura
+              and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+              and ${sqlMismoPeriodo("$6", "s2.tipo")}
+            order by s2.hora_inicio limit 1`,
+          [docenteClase, excluir, efDia, efHi, efHf, base.tipo]);
+        if (choque) throw new Error(`el docente de la clase ya da "${choque.mat}" a esa hora: no se puede agregar este grupo sin empalmarlo.`);
+      }
+    }
     // El grupo nuevo adopta el horario de la clase (una clase = un horario).
     await client.query(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where id = any($4)`,
       [efDia, efHi, efHf, ids]);
@@ -1675,26 +1700,32 @@ export async function homogeneizarHorarioCompactacion(
   if (miembros.length === 0) return { ok: false, error: "La clase compactada no tiene grupos. Recarga la pantalla." };
   const ids = miembros.map((m) => m.id);
 
-  // Choque de cada docente de la clase contra OTRAS clases suyas (fuera de esta compactación) a ese horario.
-  const profes = [...new Set(miembros.map((m) => m.profesor_id).filter((x): x is number => x != null))];
-  for (const prof of profes) {
-    const [choque] = await q<{ mat: string }>(
-      `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
-         from asignaciones a2 join slots s2 on s2.id=a2.slot_id
-         left join materias m2 on m2.id=s2.materia_id
-         left join grupos g2 on g2.id=s2.grupo_id
-        where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
-          and not s2.no_apertura
-          and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
-          and ${sqlMismoPeriodo("$6", "s2.tipo")}
-        order by s2.hora_inicio limit 1`,
-      [prof, ids, dia, hi, hf, miembros[0].tipo]);
-    if (choque) return { ok: false, error: `Un docente de la clase ya da "${choque.mat}" a esa hora: elige otro horario para no empalmarlo.` };
-  }
+  const profes = [...new Set(miembros.map((m) => m.profesor_id).filter((x): x is number => x != null))].sort((a, b) => a - b);
 
   const client = await pool.connect();
   try {
     await client.query("begin");
+    const exec = <T = Record<string, unknown>>(sql: string, params: unknown[] = []) =>
+      client.query(sql, params).then((r) => r.rows as T[]);
+    // Choque de cada docente de la clase contra OTRAS clases suyas (fuera de esta compactación)
+    // a ese horario. DENTRO de la transacción, tras el candado por docente (mismo patrón que
+    // asignar/compactar). Los candados se toman en orden ascendente para no interbloquearse
+    // con otra operación que toque a los mismos docentes.
+    for (const prof of profes) await exec("select pg_advisory_xact_lock(492813475, $1::int)", [prof]);
+    for (const prof of profes) {
+      const [choque] = await exec<{ mat: string }>(
+        `select coalesce(m2.nombre,'otra clase') || coalesce(' · ' || g2.clave,'') mat
+           from asignaciones a2 join slots s2 on s2.id=a2.slot_id
+           left join materias m2 on m2.id=s2.materia_id
+           left join grupos g2 on g2.id=s2.grupo_id
+          where a2.profesor_id=$1 and s2.ciclo_id=${act.id} and s2.id <> all($2)
+            and not s2.no_apertura
+            and s2.dia=$3 and s2.hora_inicio < $5 and $4 < s2.hora_fin
+            and ${sqlMismoPeriodo("$6", "s2.tipo")}
+          order by s2.hora_inicio limit 1`,
+        [prof, ids, dia, hi, hf, miembros[0].tipo]);
+      if (choque) throw new Error(`un docente de la clase ya da "${choque.mat}" a esa hora: elige otro horario para no empalmarlo.`);
+    }
     await client.query(`update slots set dia=$1, hora_inicio=$2, hora_fin=$3 where compactacion_id=$4 and ciclo_id=${act.id}`,
       [dia, hi, hf, compactacionId]);
     await recomputarAlertas((sql: string, params: unknown[] = []) =>
