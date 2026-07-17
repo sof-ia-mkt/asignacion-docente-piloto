@@ -6,7 +6,10 @@
 import { useEffect } from "react";
 import Link from "next/link";
 
-export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+// OJO Next 16: `reset()` solo limpia el estado del boundary SIN volver a pedir datos —
+// para una caída momentánea de la base no reintenta nada. `unstable_retry()` sí re-fetchea
+// y re-renderiza el segmento (es lo que los docs recomiendan para este caso).
+export default function Error({ error, unstable_retry }: { error: Error & { digest?: string }; unstable_retry: () => void }) {
   useEffect(() => {
     // Queda en los logs de Vercel para diagnóstico (el usuario solo ve el mensaje amable).
     console.error("Error de página:", error);
@@ -24,7 +27,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
       </p>
       <div className="mt-6 flex items-center justify-center gap-2">
         <button
-          onClick={() => reset()}
+          onClick={() => unstable_retry()}
           className="px-4 py-2 rounded-md bg-slate-900 text-white text-sm hover:bg-slate-800">
           Reintentar
         </button>
