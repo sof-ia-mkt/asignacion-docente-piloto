@@ -85,7 +85,7 @@ export default async function AsignacionPage({
         <div className="flex items-center gap-2 shrink-0">
           <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri,
             tipo, plan, turno, modalidad, comp }} />
-          {sugeridas > 0 && (
+          {act.estado === "planeacion" && sugeridas > 0 && (
             <form action={confirmarSugeridas.bind(null, {
               plantel: plantel || undefined, cuatri: cuatri || undefined,
               tipo: tipo.length ? tipo : undefined, q: qstr || undefined,
@@ -99,9 +99,11 @@ export default async function AsignacionPage({
               </ConfirmButton>
             </form>
           )}
-          <Link href="/asignacion/nueva" className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">
-            + Nueva materia por grupo
-          </Link>
+          {act.estado === "planeacion" && (
+            <Link href="/asignacion/nueva" className="px-3 py-1.5 rounded-md bg-slate-900 text-white text-sm whitespace-nowrap">
+              + Nueva materia por grupo
+            </Link>
+          )}
         </div>
       </div>
 
@@ -111,7 +113,8 @@ export default async function AsignacionPage({
         planteles={planteles} cuatris={facetas.cuatris} tipos={facetas.tipos}
         carreras={facetas.carreras} turnos={facetas.turnos} modalidades={facetas.modalidades} conteo={conteo} />
 
-      <TablaAsignacion rows={rows} materias={materias} parked={estado === "no_apertura"} />
+      <TablaAsignacion rows={rows} materias={materias} parked={estado === "no_apertura"}
+        soloLectura={act.estado !== "planeacion"} />
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-xs text-slate-400">
           {total === 0

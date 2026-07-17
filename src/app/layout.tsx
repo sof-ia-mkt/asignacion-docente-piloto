@@ -95,6 +95,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             </div>
           </div>
         </header>
+        {activo.estado !== "planeacion" && (
+          <div className="bg-amber-50 border-b border-amber-200">
+            <div className="mx-auto max-w-[1440px] px-4 sm:px-6 py-2 text-sm text-amber-900">
+              <span className="font-medium">Estás viendo {activo.nombre} (historial): solo lectura.</span>{" "}
+              Este ciclo ya cerró y alimenta la recomendación; no se puede modificar. Para hacer cambios,
+              elige el cuatrimestre en curso en el selector de ciclo.
+            </div>
+          </div>
+        )}
         <main className="flex-1 mx-auto w-full max-w-[1440px] px-4 sm:px-6 py-6">{children}</main>
         <footer className="border-t border-slate-200 text-xs text-slate-500">
           <div className="mx-auto max-w-[1440px] px-4 sm:px-6 py-3">

@@ -323,6 +323,16 @@ function comoSnap(v: unknown): Snap | null {
   return null;
 }
 
+// Slots que una foto toca (directo en `slots` o vía `asignaciones.slot_id`). Sirve para el
+// candado de ciclo del deshacer: de estos slots se deriva a qué ciclo pertenece el movimiento.
+function slotsDeSnap(s: Snap | null, out: Set<number>): void {
+  if (!s) return;
+  if (s.kind === "multi") { for (const x of s.snaps) slotsDeSnap(x, out); return; }
+  const clave = s.clave as Record<string, unknown>;
+  const id = s.tabla === "slots" ? clave.id : s.tabla === "asignaciones" ? clave.slot_id : null;
+  if (typeof id === "number" && Number.isFinite(id)) out.add(id);
+}
+
 export type ResultadoReversion = { ok: true; descripcion: string } | { ok: false; error: string };
 
 // Deshace el movimiento de bitácora `id`. NO recalcula alertas ni revalida páginas:
@@ -338,6 +348,21 @@ export async function aplicarReversion(id: number): Promise<ResultadoReversion> 
   const despues = comoSnap(row.datos_despues);
   if (!antes || !despues)
     return { ok: false, error: "Este movimiento es anterior a la función de deshacer (no guardó una foto para revertir)." };
+
+  // Candado de ciclo: si el movimiento toca clases (slots/asignaciones) de un ciclo cerrado,
+  // no se revierte. El historial es solo lectura: alimenta la recomendación (+40) y deshacer
+  // un movimiento ahí lo corrompería. (El ciclo de un slot nunca cambia, así que este
+  // pre-chequeo fuera de la transacción es seguro.)
+  const slotIds = new Set<number>();
+  slotsDeSnap(antes, slotIds);
+  slotsDeSnap(despues, slotIds);
+  if (slotIds.size) {
+    const [cerrado] = await q<{ nombre: string }>(
+      `select c.nombre from slots s join ciclos c on c.id = s.ciclo_id
+        where s.id = any($1) and c.estado <> 'planeacion' limit 1`, [[...slotIds]]);
+    if (cerrado)
+      return { ok: false, error: `No se puede deshacer: la clase pertenece al ciclo "${cerrado.nombre}", que ya es historial (solo lectura).` };
+  }
 
   // Transacción atómica: leer-comparar-aplicar en una sola unidad, con FOR UPDATE para
   // bloquear las filas afectadas. Sin esto, dos "deshacer" simultáneos (o un deshacer y una

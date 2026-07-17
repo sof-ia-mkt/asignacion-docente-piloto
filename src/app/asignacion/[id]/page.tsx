@@ -23,6 +23,9 @@ export default async function SlotPage({
   const [data, act] = await Promise.all([getSlot(slotId), cicloActivo()]);
   if (!data) notFound();
   const { slot, candidatos, aulas } = data;
+  // Ciclo de historial: la clase se puede CONSULTAR pero no modificar (el banner global del
+  // layout ya avisa; aquí además se ocultan todos los controles de acción).
+  const soloLectura = act.estado !== "planeacion";
   const manuales = await buscarProfesores(
     buscar, slot.materia_id, slotId, slot.dia, slot.hora_inicio, slot.hora_fin, slot.tipo);
   const esPresencial = (slot.modalidad ?? "").toUpperCase() === "PRESENCIAL";
@@ -74,11 +77,13 @@ export default async function SlotPage({
             <span className="font-medium">Esta materia está marcada como “No se apertura”.</span>{" "}
             Está oculta de la lista de asignación y no cuenta en los totales ni en las alertas.
           </p>
-          <form action={reactivarSlot.bind(null, slotId)}>
-            <BotonSubmit className="px-3 py-1.5 rounded-md border border-green-300 bg-green-100 text-green-800 text-sm whitespace-nowrap hover:bg-green-200">
-              Reactivar
-            </BotonSubmit>
-          </form>
+          {!soloLectura && (
+            <form action={reactivarSlot.bind(null, slotId)}>
+              <BotonSubmit className="px-3 py-1.5 rounded-md border border-green-300 bg-green-100 text-green-800 text-sm whitespace-nowrap hover:bg-green-200">
+                Reactivar
+              </BotonSubmit>
+            </form>
+          )}
         </div>
       )}
 
@@ -146,7 +151,7 @@ export default async function SlotPage({
             <span className="text-slate-400">sin propuesta</span>
           )}
           {slot.razon && <p className="mt-1 text-xs text-slate-400">{slot.razon}</p>}
-          {slot.docente && (
+          {slot.docente && !soloLectura && (
             <div className="mt-3 flex gap-2">
               {slot.estado === "sugerida" && (
                 <form action={confirmar.bind(null, slotId, undefined)}>
@@ -165,14 +170,16 @@ export default async function SlotPage({
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-medium text-slate-700">Día y horario</h2>
-        <p className="mt-0.5 text-xs text-slate-400">
-          Corrige o completa el horario de esta materia. Muchas vienen sin horario del Excel.
-        </p>
-        <FormHorario slotId={slotId} dia={slot.dia} horaInicio={slot.hora_inicio} horaFin={slot.hora_fin} dias={DIAS} />
-        <p className="mt-2 text-xs text-slate-400">Formato de hora: HH:MM (24h). Déjalo vacío si aún no hay horario.</p>
-      </div>
+      {!soloLectura && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-medium text-slate-700">Día y horario</h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Corrige o completa el horario de esta materia. Muchas vienen sin horario del Excel.
+          </p>
+          <FormHorario slotId={slotId} dia={slot.dia} horaInicio={slot.hora_inicio} horaFin={slot.hora_fin} dias={DIAS} />
+          <p className="mt-2 text-xs text-slate-400">Formato de hora: HH:MM (24h). Déjalo vacío si aún no hay horario.</p>
+        </div>
+      )}
 
       {esPresencial && (
         <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -221,7 +228,9 @@ export default async function SlotPage({
                           : <span className="text-green-700">libre</span>}
                       </td>
                       <td className="py-1.5 text-right">
-                        {slot.aula_id === au.id ? (
+                        {soloLectura ? (
+                          slot.aula_id === au.id ? <span className="text-xs text-slate-400">asignada</span> : null
+                        ) : slot.aula_id === au.id ? (
                           <form action={quitarAula.bind(null, slotId)}>
                             <BotonSubmit className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-xs hover:bg-slate-50">Quitar</BotonSubmit>
                           </form>
@@ -275,7 +284,7 @@ export default async function SlotPage({
                   <td className="py-1.5 text-right">
                     {slot.docente_id === c.profesor_id ? (
                       <span className="text-xs text-slate-400">{slot.estado === "confirmada" ? "aprobado" : "propuesto"}</span>
-                    ) : requiereHorario ? (
+                    ) : soloLectura ? null : requiereHorario ? (
                       <span className="text-xs text-slate-400" title="Captura el día y la hora de esta clase para poder asignar.">captura horario</span>
                     ) : c.choque ? (
                       <span className="text-xs text-red-700" title={`Ocupado: ya da "${c.choque}" a esta misma hora. No se puede empalmar.`}>ocupado</span>
@@ -303,7 +312,7 @@ export default async function SlotPage({
         </p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
+      {!soloLectura && <div className="rounded-lg border border-slate-200 bg-white p-4">
         <h2 className="text-sm font-medium text-slate-700">Asignar manualmente</h2>
         <p className="mt-0.5 text-xs text-slate-400">
           ¿No hay candidato fuerte, o quieres poner a alguien más? Busca a cualquier docente y asígnalo a mano.
@@ -368,13 +377,13 @@ export default async function SlotPage({
             La asignación manual no usa el historial ni el CV: queda registrada como decisión de coordinación (puntaje 0). El motor de recomendación no la sobreescribe.
           </p>
         </div>
-      </div>
+      </div>}
 
       {/* Quitar esta materia del cuatrimestre. Dos caminos:
           1) Recomendado y REVERSIBLE: "No se apertura" → la oculta de la lista pero no la borra
              (se recupera en la pestaña "No se abren"). Para errores del Excel o materias que no se abren.
           2) Permanente: "Eliminar" → borra el slot, su asignación y alertas. No se puede deshacer. */}
-      {!slot.no_apertura && (
+      {!slot.no_apertura && !soloLectura && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -395,7 +404,7 @@ export default async function SlotPage({
         </div>
       )}
 
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+      {!soloLectura && <div className="rounded-lg border border-red-200 bg-red-50 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium text-red-800">Eliminar esta materia por grupo</h2>
@@ -412,7 +421,7 @@ export default async function SlotPage({
             </ConfirmButton>
           </form>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

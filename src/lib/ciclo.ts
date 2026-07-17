@@ -31,6 +31,23 @@ export const cicloActivo = cache(async (): Promise<Ciclo> => {
   );
 });
 
+// ¿Por qué NO se puede editar este ciclo? null = sí se puede (está en planeación).
+// Los ciclos de historial son solo lectura: son el registro real de quién dio qué
+// (la señal +40 de la recomendación) y corromperlos rompe todas las sugerencias futuras.
+export const motivoCicloSoloLectura = (c: Ciclo): string | null =>
+  c.estado === "planeacion"
+    ? null
+    : `El ciclo "${c.nombre}" es historial (solo lectura). Cambia al cuatrimestre en planeación (selector de arriba) para hacer cambios.`;
+
+// Candado de estado de ciclo para las acciones mutantes: devuelve el ciclo activo
+// solo si está en planeación; si es historial, lanza con un mensaje claro.
+export async function exigirCicloEditable(): Promise<Ciclo> {
+  const act = await cicloActivo();
+  const motivo = motivoCicloSoloLectura(act);
+  if (motivo) throw new Error(motivo);
+  return act;
+}
+
 // IDs de los ciclos que cuentan como HISTORIAL (cerrados) para la recomendación.
 // Independiente de cuál esté seleccionado: el historial es el mismo se mire lo que se mire.
 export const ciclosHistorial = cache(async (): Promise<number[]> => {
