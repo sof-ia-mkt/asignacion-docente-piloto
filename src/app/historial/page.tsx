@@ -6,7 +6,7 @@ import { esReversible } from "@/lib/revertir";
 import { BotonDeshacer } from "./boton-deshacer";
 
 // Orden de las entidades en las pastillas de filtro (lo más editado primero).
-const ENTIDADES = ["docente", "clase", "aula", "asignacion", "candidatura", "materia", "cv"];
+const ENTIDADES = ["docente", "clase", "aula", "asignacion", "candidatura", "materia", "grupo", "cv"];
 const ACCIONES = ["creó", "editó", "borró", "asignó", "quitó", "confirmó", "agregó", "procesó", "deshizo"];
 
 const PER_PAGE = 100;

@@ -1345,6 +1345,86 @@ export async function eliminarSlot(slotId: number) {
   redirect("/asignacion");
 }
 
+// Crea un GRUPO nuevo con el constructor de clave: la clave NUNCA se teclea, se arma por
+// partes (plan → prefijo, número, turno, plantel → campus, subdivisión opcional). Cada parte
+// se valida contra el catálogo real — así no pueden nacer variantes con dedazo ("ELE", "TC.").
+export async function crearGrupo(datos: {
+  planId: number;
+  numero: number;
+  turnoCodigo: string;
+  plantel: string;
+  subdivision?: string;
+  cuatrimestre?: string;
+  alumnos?: number | null;
+}): Promise<{ ok: true; id: number; clave: string } | { ok: false; error: string }> {
+  await exigirSesionActiva();
+
+  if (!Number.isInteger(datos.numero) || datos.numero < 1 || datos.numero > 999)
+    return { ok: false, error: "El número de grupo debe ser un entero entre 1 y 999." };
+  const sub = (datos.subdivision ?? "").trim().toUpperCase();
+  if (!["", "A", "B"].includes(sub))
+    return { ok: false, error: "La subdivisión solo puede ser A o B (o ninguna)." };
+  const cuatri = (datos.cuatrimestre ?? "").trim() || null;
+  if (cuatri && !/^[1-9]°$/.test(cuatri))
+    return { ok: false, error: "Cuatrimestre no válido (1° a 9°)." };
+  const alumnos = datos.alumnos ?? null;
+  if (alumnos != null && (!Number.isInteger(alumnos) || alumnos < 0 || alumnos > 1000))
+    return { ok: false, error: "El número de alumnos debe ser un entero entre 0 y 1000." };
+
+  // Prefijo del plan: el DOMINANTE en los datos reales (no se inventa ni se teclea).
+  const [plan] = await q<{ id: number; nombre: string; prefijo: string | null }>(
+    `select p.id, p.nombre,
+            (select split_part(g.clave,'_',1) from grupos g
+              where g.plan_id = p.id and g.clave is not null
+              group by 1 order by count(*) desc, 1 limit 1) prefijo
+       from planes p where p.id = $1`, [datos.planId]);
+  if (!plan) return { ok: false, error: "Esa carrera no existe." };
+  if (!plan.prefijo) return { ok: false, error: "Esa carrera no tiene grupos previos: no hay prefijo de clave que reutilizar. Avísame para definirlo." };
+
+  // Turno: solo códigos con uso real (3+ grupos); los raros son typos históricos.
+  const turnosOk = await q<{ codigo: string }>(
+    `select split_part(clave,'_',3) codigo from grupos
+      where clave is not null and array_length(string_to_array(clave,'_'),1) >= 4
+      group by 1 having count(*) >= 3`);
+  const turno = datos.turnoCodigo.trim().toUpperCase();
+  if (!turnosOk.some((t) => t.codigo === turno))
+    return { ok: false, error: "Ese código de turno no está en el catálogo." };
+
+  // Campus: el código dominante del plantel elegido (CB gana sobre "TC."/"TEC").
+  const [camp] = await q<{ campus: string }>(
+    `select (string_to_array(g.clave,'_'))[array_length(string_to_array(g.clave,'_'),1)] campus
+       from slots s join grupos g on g.id = s.grupo_id
+      where g.clave is not null and s.plantel = $1
+      group by campus order by count(*) desc limit 1`, [datos.plantel]);
+  if (!camp) return { ok: false, error: "Ese plantel no existe en los datos (o no tiene grupos para deducir su código de campus)." };
+
+  const clave = `${plan.prefijo}_G${datos.numero}_${turno}${sub ? `_${sub}` : ""}_${camp.campus}`;
+
+  // Duplicado: además del UNIQUE de la base, avisamos bonito y sugerimos el siguiente libre.
+  const [dup] = await q<{ id: number }>("select id from grupos where clave=$1", [clave]);
+  if (dup) {
+    const usados = await q<{ clave: string }>(
+      `select clave from grupos where clave like $1`, [`${plan.prefijo}\\_G%\\_${turno}${sub ? `\\_${sub}` : ""}\\_${camp.campus}`]);
+    const nums = usados.map((u) => Number(u.clave.split("_")[1]?.replace(/^G/, ""))).filter(Number.isFinite);
+    const sig = nums.length ? Math.max(...nums) + 1 : 1;
+    return { ok: false, error: `El grupo ${clave} ya existe. El siguiente número libre para esa combinación es G${sig}.` };
+  }
+
+  const [nuevo] = await q<{ id: number }>(
+    `insert into grupos (clave, plan_id, cuatrimestre, alumnos) values ($1,$2,$3,$4) returning id`,
+    [clave, plan.id, cuatri, alumnos]);
+  await registrarCambio({
+    entidad: "grupo",
+    entidadId: nuevo.id,
+    accion: "creó",
+    descripcion: `Creó el grupo ${clave} (${plan.nombre}${cuatri ? ` · ${cuatri}` : ""}${alumnos != null ? ` · ${alumnos} alumnos` : ""}, ${datos.plantel})`,
+    despues: { id: nuevo.id, clave, plan_id: plan.id, cuatrimestre: cuatri, alumnos },
+  });
+  revalidatePath("/asignacion/nueva");
+  revalidatePath("/asignacion");
+  return { ok: true, id: nuevo.id, clave };
+}
+
 export type CrearSlotState = { error?: string };
 
 // Crea una materia por grupo nueva en el ciclo activo (el que está seleccionado en el header).
@@ -1356,7 +1436,7 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
   if (bloqueo) return { error: bloqueo };
   const plantel = String(fd.get("plantel") ?? "").trim();
   const materiaNombre = String(fd.get("materia") ?? "").trim();
-  const grupoClave = String(fd.get("grupo") ?? "").trim();
+  const grupoIdRaw = String(fd.get("grupo_id") ?? "").trim();
   const tipo = String(fd.get("tipo") ?? "").trim() || null;
   const modalidad = String(fd.get("modalidad") ?? "").trim() || null;
   const dia = String(fd.get("dia") ?? "").trim() || null;
@@ -1380,15 +1460,19 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
       [materiaNombre, slugify(materiaNombre)]);
   }
 
-  // Grupo (opcional): reutiliza por clave o crea uno con solo la clave.
+  // Grupo (opcional): SOLO del catálogo, por id. Ya no se crean grupos desde aquí con texto
+  // libre (era la puerta de los dedazos tipo "TC."/"ELE" y dejaba grupos sin plan_id): los
+  // grupos nuevos se arman con el constructor de clave ("+ Nuevo grupo" en el formulario).
   let grupoId: number | null = null;
-  if (grupoClave) {
-    let [grupo] = await q<{ id: number }>("select id from grupos where clave=$1", [grupoClave]);
-    if (!grupo) {
-      [grupo] = await q<{ id: number }>(
-        "insert into grupos (clave, cuatrimestre) values ($1,$2) returning id", [grupoClave, cuatrimestre]);
-    }
+  let grupoClave: string | null = null;
+  if (grupoIdRaw) {
+    const gid = Number(grupoIdRaw);
+    const [grupo] = Number.isInteger(gid)
+      ? await q<{ id: number; clave: string }>("select id, clave from grupos where id=$1", [gid])
+      : [];
+    if (!grupo) return { error: "Ese grupo no existe en el catálogo. Elígelo de la lista o créalo con «+ Nuevo grupo»." };
     grupoId = grupo.id;
+    grupoClave = grupo.clave;
   }
 
   const [slot] = await q<{ id: number }>(

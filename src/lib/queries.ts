@@ -568,6 +568,39 @@ export async function getGrupos() {
     "select id, clave from grupos where clave is not null order by clave");
 }
 
+// Datos para el CONSTRUCTOR de claves de grupo (nunca se teclea la clave: se arma por partes).
+// Todo sale de los datos reales: el prefijo dominante de cada plan (así "ELEC" gana sobre el
+// dedazo histórico "ELE"), los códigos de turno con uso real (los raros de 1 grupo se excluyen:
+// son typos), y el código de campus dominante de cada plantel (CB gana sobre "TC."/"TEC").
+export async function getDatosNuevoGrupo() {
+  const planes = await q<{ id: number; nombre: string; prefijo: string | null }>(
+    `select p.id, p.nombre,
+            (select split_part(g.clave,'_',1) from grupos g
+              where g.plan_id = p.id and g.clave is not null
+              group by 1 order by count(*) desc, 1 limit 1) prefijo
+       from planes p where p.nombre is not null order by p.nombre`);
+  const turnos = await q<{ codigo: string; n: number }>(
+    `select split_part(clave,'_',3) codigo, count(*)::int n
+       from grupos where clave is not null
+        and array_length(string_to_array(clave,'_'),1) >= 4
+      group by 1 having count(*) >= 3 order by n desc`);
+  const planteles = await q<{ plantel: string; campus: string }>(
+    `select distinct on (s.plantel) s.plantel,
+            (string_to_array(g.clave,'_'))[array_length(string_to_array(g.clave,'_'),1)] campus
+       from slots s join grupos g on g.id = s.grupo_id
+      where g.clave is not null and s.plantel is not null
+      group by s.plantel, campus
+      order by s.plantel, count(*) desc`);
+  const claves = await q<{ clave: string }>(
+    "select clave from grupos where clave is not null");
+  return {
+    planes: planes.filter((p) => p.prefijo),
+    turnos,
+    planteles,
+    claves: claves.map((c) => c.clave),
+  };
+}
+
 export async function getAulas() {
   const act = await cicloActivo();
   // en_uso = nº de clases del ciclo activo que tienen asignada esta aula (para no borrar salones ocupados).

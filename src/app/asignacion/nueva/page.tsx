@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { getPlanteles, getMaterias, getGrupos } from "@/lib/queries";
+import { getPlanteles, getMaterias, getGrupos, getDatosNuevoGrupo } from "@/lib/queries";
 import { NuevaMateriaForm } from "./form";
 
 export default async function NuevaMateriaPage() {
-  const [planteles, materias, grupos] = await Promise.all([
-    getPlanteles(), getMaterias(), getGrupos(),
+  const [planteles, materias, grupos, datosGrupo] = await Promise.all([
+    getPlanteles(), getMaterias(), getGrupos(), getDatosNuevoGrupo(),
   ]);
   return (
     <div className="space-y-4">
@@ -15,7 +15,7 @@ export default async function NuevaMateriaPage() {
           Agrega una clase que falte en el ciclo que estás asignando. Luego podrás asignarle docente y aula.
         </p>
       </div>
-      <NuevaMateriaForm planteles={planteles} materias={materias} grupos={grupos} />
+      <NuevaMateriaForm planteles={planteles} materias={materias} grupos={grupos} datosGrupo={datosGrupo} />
     </div>
   );
 }

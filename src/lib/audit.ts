@@ -18,6 +18,7 @@ export type EntidadBitacora =
   | "candidatura"
   | "compactacion"   // Fase 2: juntar/separar grupos en una sola clase
   | "materia"        // catálogo de materias (renombrar)
+  | "grupo"          // catálogo de grupos (crear con el constructor de clave)
   | "cv";
 
 // Verbo de la acción, en lenguaje de coordinación.

@@ -1,6 +1,7 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { crearSlot, type CrearSlotState } from "@/app/actions";
+import { NuevoGrupo, type DatosNuevoGrupo } from "./nuevo-grupo";
 
 const input = "w-full px-3 py-2 rounded-md border border-slate-300 text-sm";
 const label = "block text-sm font-medium text-slate-700 mb-1";
@@ -14,12 +15,19 @@ export function NuevaMateriaForm({
   planteles,
   materias,
   grupos,
+  datosGrupo,
 }: {
   planteles: { plantel: string }[];
   materias: { id: number; nombre: string }[];
   grupos: { id: number; clave: string }[];
+  datosGrupo: DatosNuevoGrupo;
 }) {
   const [state, action, pending] = useActionState<CrearSlotState, FormData>(crearSlot, {});
+  // El grupo se elige del catálogo (select estricto, ya no se teclea la clave). Si el grupo
+  // no existe, el constructor de abajo lo crea y aquí queda seleccionado automáticamente.
+  const [listaGrupos, setListaGrupos] = useState(grupos);
+  const [grupoSel, setGrupoSel] = useState("");
+  const [creandoGrupo, setCreandoGrupo] = useState(false);
 
   // Aviso suave (no bloquea): una clase PRESENCIAL sin horario casi siempre es un olvido.
   // Las virtuales/asincrónicas no tienen hora fija, así que ahí no preguntamos.
@@ -62,10 +70,20 @@ export function NuevaMateriaForm({
 
         <div>
           <label className={label}>Grupo <span className="text-slate-400 font-normal">(opcional)</span></label>
-          <input name="grupo" list="grupos-list" className={input} placeholder="Ej. MEC_G19_DM_CB — o déjalo vacío" />
-          <datalist id="grupos-list">
-            {grupos.map((g) => <option key={g.id} value={g.clave} />)}
-          </datalist>
+          <div className="flex gap-2">
+            <select name="grupo_id" value={grupoSel} onChange={(e) => setGrupoSel(e.target.value)} className={input}>
+              <option value="">— sin grupo —</option>
+              {listaGrupos.map((g) => <option key={g.id} value={g.id}>{g.clave}</option>)}
+            </select>
+            <button type="button" onClick={() => setCreandoGrupo((v) => !v)}
+              className="shrink-0 px-3 py-2 rounded-md border border-blue-300 bg-blue-50 text-sm text-blue-800 hover:bg-blue-100 whitespace-nowrap">
+              {creandoGrupo ? "Cerrar" : "+ Nuevo grupo"}
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Solo grupos del catálogo (la clave ya no se teclea, para evitar errores de dedo).
+            ¿No existe todavía? Créalo con «+ Nuevo grupo»: la clave se arma sola.
+          </p>
         </div>
         <div>
           <label className={label}>Cuatrimestre *</label>
@@ -98,6 +116,19 @@ export function NuevaMateriaForm({
           <input name="hora_fin" className={input} placeholder="09:00" />
         </div>
       </div>
+
+      {/* Constructor de grupo: crea la clave por partes y la deja seleccionada arriba. */}
+      {creandoGrupo && (
+        <NuevoGrupo
+          datos={datosGrupo}
+          onCreado={(g) => {
+            setListaGrupos((prev) => [...prev, g].sort((a, b) => a.clave.localeCompare(b.clave)));
+            setGrupoSel(String(g.id));
+            setCreandoGrupo(false);
+          }}
+          onCancelar={() => setCreandoGrupo(false)}
+        />
+      )}
 
       {state.error && (
         <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{state.error}</p>
