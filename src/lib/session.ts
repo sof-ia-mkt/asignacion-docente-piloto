@@ -7,9 +7,9 @@ import { COOKIE_SESION } from "./session-cookie";
 
 export { COOKIE_SESION };
 
-/** Inicia sesión: guarda la cookie firmada. */
-export async function abrirSesion(usuario: string): Promise<void> {
-  const token = await crearToken(usuario);
+/** Inicia sesión: guarda la cookie firmada con la versión de token actual del usuario. */
+export async function abrirSesion(usuario: string, tokenVersion = 0): Promise<void> {
+  const token = await crearToken(usuario, tokenVersion);
   (await cookies()).set(COOKIE_SESION, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -24,12 +24,16 @@ export async function cerrarSesion(): Promise<void> {
   (await cookies()).delete(COOKIE_SESION);
 }
 
-/** Persona logueada ahora (token válido + sigue activa en la base), o null. */
+/** Persona logueada ahora (token válido + sigue activa en la base + versión vigente), o null.
+ *  La versión corta las sesiones viejas cuando la persona (o un admin) cambia su contraseña. */
 export async function sesionActual(): Promise<UsuarioRow | null> {
   const token = (await cookies()).get(COOKIE_SESION)?.value;
-  const login = await leerToken(token);
-  if (!login) return null;
-  return usuarioActivo(login);
+  const leido = await leerToken(token);
+  if (!leido) return null;
+  const u = await usuarioActivo(leido.usuario);
+  if (!u) return null;
+  if ((u.token_version ?? 0) !== leido.version) return null;   // contraseña cambiada → sesión vieja fuera
+  return u;
 }
 
 /**

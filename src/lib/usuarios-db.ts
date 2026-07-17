@@ -14,6 +14,7 @@ export type UsuarioRow = {
   es_admin: boolean;
   activo: boolean;
   debe_cambiar_password: boolean;
+  token_version: number;
   creado_en: string;
 };
 
@@ -41,7 +42,7 @@ export function tieneAccesoTotal(u: { es_admin: boolean; rol: string | null }): 
   return u.es_admin || u.rol === ROL_DIRECCION_GENERAL;
 }
 
-const COLS = "id, usuario, nombre, correo, rol, carrera, es_admin, activo, debe_cambiar_password, creado_en";
+const COLS = "id, usuario, nombre, correo, rol, carrera, es_admin, activo, debe_cambiar_password, token_version, creado_en";
 
 /** Trae el usuario (incluye hash y estado de bloqueo) para verificar el login. null si no existe o está inactivo. */
 export async function usuarioParaLogin(
@@ -105,22 +106,29 @@ export async function crearUsuario(d: {
   );
 }
 
-/** Reseteo por un admin: vuelve a la temporal y obliga a la persona a fijar una nueva. */
+/** Reseteo por un admin: vuelve a la temporal y obliga a la persona a fijar una nueva.
+ *  Sube token_version: cualquier sesión abierta de esa cuenta muere al instante. */
 export async function resetearPassword(id: number, nuevaPassword: string): Promise<void> {
   await q(
     `update usuarios set password_hash = $2, debe_cambiar_password = true,
+            token_version = token_version + 1,
             intentos_fallidos = 0, bloqueado_hasta = null where id = $1`,
     [id, cifrarPassword(nuevaPassword)],
   );
 }
 
-/** Cambio hecho por la propia persona: fija su contraseña y apaga la bandera de cambio obligatorio. */
-export async function cambiarPasswordPropia(id: number, nuevaPassword: string): Promise<void> {
-  await q(
+/** Cambio hecho por la propia persona: fija su contraseña y apaga la bandera de cambio obligatorio.
+ *  Sube token_version (mata sesiones previas, incluidos tokens robados) y la devuelve para
+ *  que quien llama re-emita la cookie de ESTA sesión y la persona no salga expulsada. */
+export async function cambiarPasswordPropia(id: number, nuevaPassword: string): Promise<number> {
+  const [r] = await q<{ token_version: number }>(
     `update usuarios set password_hash = $2, debe_cambiar_password = false,
-            intentos_fallidos = 0, bloqueado_hasta = null where id = $1`,
+            token_version = token_version + 1,
+            intentos_fallidos = 0, bloqueado_hasta = null where id = $1
+     returning token_version`,
     [id, cifrarPassword(nuevaPassword)],
   );
+  return r.token_version;
 }
 
 export async function fijarActivo(id: number, activo: boolean): Promise<void> {

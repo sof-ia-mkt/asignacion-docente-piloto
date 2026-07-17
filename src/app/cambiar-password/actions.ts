@@ -1,6 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
-import { sesionActual } from "@/lib/session";
+import { sesionActual, abrirSesion } from "@/lib/session";
 import { usuarioParaLogin, cambiarPasswordPropia } from "@/lib/usuarios-db";
 import { verificarPassword, validarPasswordNueva } from "@/lib/password";
 
@@ -29,6 +29,10 @@ export async function cambiarPasswordAccion(_prev: CambioState, fd: FormData): P
     return { error: "La nueva contraseña debe ser distinta de la actual." };
   }
 
-  await cambiarPasswordPropia(yo.id, nueva);
+  // El cambio sube token_version (mata todas las sesiones previas de la cuenta, incluidos
+  // tokens robados). Re-emitimos la cookie de ESTA sesión con la versión nueva para que la
+  // persona que hizo el cambio siga dentro sin volver a loguearse.
+  const nuevaVersion = await cambiarPasswordPropia(yo.id, nueva);
+  await abrirSesion(yo.usuario, nuevaVersion);
   redirect("/");
 }

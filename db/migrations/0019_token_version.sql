@@ -1,0 +1,13 @@
+-- ============================================================================
+-- VERSIÓN DE TOKEN POR USUARIO  (invalidar sesiones al cambiar la contraseña)
+-- ============================================================================
+-- El token de sesión es stateless ({usuario, exp} firmado): cambiar la contraseña
+-- no cortaba las sesiones ya abiertas — un token robado seguía siendo válido sus
+-- 7 días completos. Ahora el token lleva la versión y sesionActual() la compara
+-- contra esta columna; cambiar/resetear la contraseña la incrementa y mata todas
+-- las sesiones previas de esa cuenta.
+--
+-- DISEÑO TOLERANTE (sin desloguear a nadie al desplegar): un token SIN campo de
+-- versión cuenta como versión 0, y todos los usuarios arrancan en 0 → las sesiones
+-- vivas siguen siendo válidas; solo se invalidan cuando su dueño cambia de contraseña.
+alter table usuarios add column if not exists token_version int not null default 0;

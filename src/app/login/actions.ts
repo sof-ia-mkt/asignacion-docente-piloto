@@ -33,7 +33,7 @@ export async function iniciarSesion(_prev: LoginState, fd: FormData): Promise<Lo
   }
 
   await limpiarLoginFallidos(u.id);
-  await abrirSesion(u.usuario);
+  await abrirSesion(u.usuario, u.token_version ?? 0);
   // Si entra con la temporal (o tras un reseteo), primero fija su propia contraseña.
   redirect(u.debe_cambiar_password ? "/cambiar-password" : "/");
 }
