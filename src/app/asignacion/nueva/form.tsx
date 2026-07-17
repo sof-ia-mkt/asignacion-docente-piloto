@@ -28,6 +28,15 @@ export function NuevaMateriaForm({
   const [listaGrupos, setListaGrupos] = useState(grupos);
   const [grupoSel, setGrupoSel] = useState("");
   const [creandoGrupo, setCreandoGrupo] = useState(false);
+  // Regla de los datos (sin excepciones): VIRTUAL ⇔ ASINCRÓNICA; el resto, PRESENCIAL.
+  // Al cambiar el tipo, la modalidad se acomoda sola para no capturar combinaciones imposibles.
+  const [tipoSel, setTipoSel] = useState("DISCIPLINAR");
+  const [modalidadSel, setModalidadSel] = useState("PRESENCIAL");
+  const cambiarTipo = (t: string) => {
+    setTipoSel(t);
+    if (t === "VIRTUAL") setModalidadSel("ASINCRÓNICA");
+    else if (modalidadSel === "ASINCRÓNICA") setModalidadSel("PRESENCIAL");
+  };
 
   // Aviso suave (no bloquea): una clase PRESENCIAL sin horario casi siempre es un olvido.
   // Las virtuales/asincrónicas no tienen hora fija, así que ahí no preguntamos.
@@ -54,9 +63,14 @@ export function NuevaMateriaForm({
         </div>
         <div>
           <label className={label}>Tipo de clase</label>
-          <select name="tipo" defaultValue="DISCIPLINAR" className={input}>
+          <select name="tipo" value={tipoSel} onChange={(e) => cambiarTipo(e.target.value)} className={input}>
             {TIPOS.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
+          {tipoSel === "VIRTUAL" && (
+            <p className="mt-1 text-xs text-slate-400">
+              Las virtuales son asincrónicas y sin horario (así están todas las demás): la modalidad se ajustó sola.
+            </p>
+          )}
         </div>
 
         <div className="md:col-span-2">
@@ -95,7 +109,7 @@ export function NuevaMateriaForm({
 
         <div>
           <label className={label}>Modalidad</label>
-          <select name="modalidad" defaultValue="PRESENCIAL" className={input}>
+          <select name="modalidad" value={modalidadSel} onChange={(e) => setModalidadSel(e.target.value)} className={input}>
             {MODALIDADES.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>

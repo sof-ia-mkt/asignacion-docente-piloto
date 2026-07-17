@@ -1450,6 +1450,14 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
   // con nada), escondiendo empalmes reales de docente y de aula. Se rechaza en la captura.
   if (hi && hf && hi >= hf)
     return { error: `El horario está invertido o vacío (${hi}–${hf}): la hora de inicio debe ser antes que la de fin.` };
+  // Coherencia con TODAS las demás materias (regla sin excepciones en los datos):
+  // VIRTUAL ⇔ ASINCRÓNICA y sin horario; los demás tipos son PRESENCIALES.
+  if (tipo === "VIRTUAL" && modalidad !== "ASINCRÓNICA")
+    return { error: "Las clases VIRTUALES son asincrónicas (así están todas las demás). Cambia la modalidad a ASINCRÓNICA." };
+  if (tipo !== "VIRTUAL" && modalidad === "ASINCRÓNICA")
+    return { error: "Solo las clases VIRTUALES son asincrónicas. Si esta clase no tiene hora fija por diseño, su tipo debe ser VIRTUAL; si no, usa PRESENCIAL." };
+  if (tipo === "VIRTUAL" && (dia || hi || hf))
+    return { error: "Las clases VIRTUALES no llevan día ni hora (asincrónicas, como todas las demás). Deja el horario vacío." };
 
   // Materia: reutiliza por nombre (case-insensitive) o crea una nueva.
   let [materia] = await q<{ id: number }>(
@@ -1758,13 +1766,19 @@ export async function agregarMateriaAClaseCompactada(
   if (mat.nombre === cont.materia)
     return { ok: false, error: `La clase compactada ya ES de "${mat.nombre}". Elige la otra materia que van a cursar estos grupos.` };
 
-  // Un slot por grupo miembro (con el cuatrimestre/modalidad de su clase original).
-  const miembros = await q<{ grupo_id: number; grupo: string; cuatrimestre: string | null; modalidad: string | null }>(
-    `select distinct on (s.grupo_id) s.grupo_id, g.clave grupo, s.cuatrimestre, s.modalidad
+  // Un slot por grupo miembro (con el cuatrimestre de su clase original).
+  const miembros = await q<{ grupo_id: number; grupo: string; cuatrimestre: string | null }>(
+    `select distinct on (s.grupo_id) s.grupo_id, g.clave grupo, s.cuatrimestre
        from slots s join grupos g on g.id = s.grupo_id
       where s.compactacion_id=$1 and s.ciclo_id=${act.id} and s.grupo_id is not null
       order by s.grupo_id, s.id`, [compactacionId]);
   if (miembros.length === 0) return { ok: false, error: "La clase compactada no tiene grupos identificables. Recarga la pantalla." };
+
+  // Coherencia con TODAS las demás materias (regla sin excepciones en los datos):
+  // VIRTUAL ⇔ ASINCRÓNICA, sin horario y sin aula; el resto es PRESENCIAL.
+  const modalidad = datos.tipo === "VIRTUAL" ? "ASINCRÓNICA" : "PRESENCIAL";
+  if (datos.tipo === "VIRTUAL" && datos.horario)
+    return { ok: false, error: "Las clases VIRTUALES son asincrónicas: no llevan día ni hora (así están todas las demás). Deja el horario vacío." };
 
   // Horario opcional; si viene, completo y válido (mismas reglas que editarHorario).
   let dia: string | null = null, hi: string | null = null, hf: string | null = null;
@@ -1797,10 +1811,10 @@ export async function agregarMateriaAClaseCompactada(
     nuevaCompId = comp.id;
     await client.query(
       `insert into slots (plantel, ciclo, ciclo_id, es_historial, grupo_id, materia_id, cuatrimestre, tipo, modalidad, dia, hora_inicio, hora_fin, compactacion_id)
-       select $1, $2, $3, false, t.g, $4, t.cuatri, $5, t.moda, $6, $7, $8, $9
-         from unnest($10::int[], $11::text[], $12::text[]) as t(g, cuatri, moda)`,
-      [cont.plantel, act.codigo, act.id, mat.id, datos.tipo, dia, hi, hf, nuevaCompId,
-       miembros.map((m) => m.grupo_id), miembros.map((m) => m.cuatrimestre), miembros.map((m) => m.modalidad)]);
+       select $1, $2, $3, false, t.g, $4, t.cuatri, $5, $6, $7, $8, $9, $10
+         from unnest($11::int[], $12::text[]) as t(g, cuatri)`,
+      [cont.plantel, act.codigo, act.id, mat.id, datos.tipo, modalidad, dia, hi, hf, nuevaCompId,
+       miembros.map((m) => m.grupo_id), miembros.map((m) => m.cuatrimestre)]);
     await recomputarAlertas((sql: string, params: unknown[] = []) =>
       client.query(sql, params).then((r) => r.rows), act.id);
     await client.query("commit");

@@ -600,9 +600,11 @@ function TarjetaCompactada({ c, libres, materias }: { c: CompactacionActiva; lib
   const ejecutarOtraMateria = () => {
     const mid = Number(nuevaMat.materiaId);
     if (!mid) { setError("Elige la materia del catálogo."); return; }
-    const partes = [nuevaMat.dia, nuevaMat.hora_inicio, nuevaMat.hora_fin];
-    const conHorario = partes.every(Boolean);
-    if (partes.some(Boolean) && !conHorario) {
+    const esVirtual = nuevaMat.tipo === "VIRTUAL";
+    // Las VIRTUALES no llevan horario (asincrónicas, como todas las demás en los datos).
+    const partes = esVirtual ? [] : [nuevaMat.dia, nuevaMat.hora_inicio, nuevaMat.hora_fin];
+    const conHorario = !esVirtual && partes.every(Boolean);
+    if (!esVirtual && partes.some(Boolean) && !conHorario) {
       setError("Para fijar horario captura día, hora inicio y hora fin — o deja los tres vacíos (se captura después).");
       return;
     }
@@ -610,7 +612,7 @@ function TarjetaCompactada({ c, libres, materias }: { c: CompactacionActiva; lib
     if (!window.confirm(
       `¿Crear "${nombre}" (${nuevaMat.tipo}) para los ${c.grupos.length} grupos de esta clase compactada?\n\n` +
       `Nace como UNA sola clase compactada (${c.grupos.map((g) => g.grupo).join(", ")}), sin docente` +
-      `${conHorario ? ` y en ${nuevaMat.dia} ${nuevaMat.hora_inicio}–${nuevaMat.hora_fin}` : " y sin horario"}. ` +
+      `${conHorario ? ` y en ${nuevaMat.dia} ${nuevaMat.hora_inicio}–${nuevaMat.hora_fin}` : esVirtual ? " (virtual: asincrónica, sin horario)" : " y sin horario"}. ` +
       `El docente se asigna después desde Asignación (ahí se validan los choques).`,
     )) return;
     setError(null);
@@ -732,17 +734,25 @@ function TarjetaCompactada({ c, libres, materias }: { c: CompactacionActiva; lib
               className="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
               {TIPOS_CLASE_UI.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
-            <span className="text-[11px] text-slate-500">Horario (opcional):</span>
-            <select value={nuevaMat.dia} onChange={(e) => setNuevaMat({ ...nuevaMat, dia: e.target.value })}
-              className="border border-slate-300 rounded px-1 py-1 text-xs bg-white">
-              <option value="">— día —</option>
-              {DIAS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </select>
-            <input type="time" value={nuevaMat.hora_inicio} onChange={(e) => setNuevaMat({ ...nuevaMat, hora_inicio: e.target.value })}
-              className="border border-slate-300 rounded px-1 py-0.5 text-xs bg-white" />
-            <span className="text-xs text-slate-400">–</span>
-            <input type="time" value={nuevaMat.hora_fin} onChange={(e) => setNuevaMat({ ...nuevaMat, hora_fin: e.target.value })}
-              className="border border-slate-300 rounded px-1 py-0.5 text-xs bg-white" />
+            {nuevaMat.tipo === "VIRTUAL" ? (
+              <span className="text-[11px] text-slate-500">
+                Las virtuales son asincrónicas: sin día ni hora (igual que todas las demás).
+              </span>
+            ) : (
+              <>
+                <span className="text-[11px] text-slate-500">Horario (opcional):</span>
+                <select value={nuevaMat.dia} onChange={(e) => setNuevaMat({ ...nuevaMat, dia: e.target.value })}
+                  className="border border-slate-300 rounded px-1 py-1 text-xs bg-white">
+                  <option value="">— día —</option>
+                  {DIAS.map((d) => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <input type="time" value={nuevaMat.hora_inicio} onChange={(e) => setNuevaMat({ ...nuevaMat, hora_inicio: e.target.value })}
+                  className="border border-slate-300 rounded px-1 py-0.5 text-xs bg-white" />
+                <span className="text-xs text-slate-400">–</span>
+                <input type="time" value={nuevaMat.hora_fin} onChange={(e) => setNuevaMat({ ...nuevaMat, hora_fin: e.target.value })}
+                  className="border border-slate-300 rounded px-1 py-0.5 text-xs bg-white" />
+              </>
+            )}
             <button type="button" onClick={ejecutarOtraMateria} disabled={pending}
               className="px-2.5 py-1 rounded-md bg-violet-700 text-white text-xs hover:bg-violet-800 disabled:opacity-60">
               {pending ? "Creando…" : "Crear para todos los grupos"}
