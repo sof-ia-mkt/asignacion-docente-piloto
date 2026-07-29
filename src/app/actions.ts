@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { q, pool } from "@/lib/db";
 import { sqlMismoPeriodo } from "@/lib/queries";
-import { cicloActivo, getCiclos, exigirCicloEditable, motivoCicloSoloLectura } from "@/lib/ciclo";
+import { cicloActivo, getCiclos, motivoCicloSoloLectura } from "@/lib/ciclo";
 import { leerCV } from "@/lib/cv";
 import { nombresCoordinadores } from "@/lib/usuarios-db";
 import { recomputarAlertas } from "@/lib/alertas-core.mjs";
@@ -306,9 +306,11 @@ export async function asignar(slotId: number, profesorId: number, puntaje?: numb
 
 // Confirma la sugerencia automática tal cual (la "acepta" coordinación).
 // Solo cambia el estado (sugerida→confirmada), no el docente, así que el diagnóstico no cambia.
-export async function confirmar(slotId: number, profesorId?: number) {
+export async function confirmar(slotId: number, profesorId?: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   const antes = await snapAsignacion(slotId);   // foto del antes (estado previo)
   // Candado de integridad (no solo UI): no se puede "confirmar" una clase sin docente,
   // ni una clase fuera del ciclo activo (misma regla que asignar/editar: pantallas viejas
@@ -350,9 +352,11 @@ export async function confirmar(slotId: number, profesorId?: number) {
 // viendo: confirma exactamente lo que tiene en pantalla.
 export async function confirmarSugeridas(
   filtro: { plantel?: string; cuatri?: string; tipo?: string[]; q?: string; plan?: string[]; turno?: string[]; modalidad?: string[]; comp?: string } = {},
-) {
+): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   // MISMO alcance que contarSugeridas (el número del botón): nunca tocar clases parqueadas.
   const conds: string[] = [`s.ciclo_id = ${act.id}`, "not s.no_apertura"];
   const params: unknown[] = [];
@@ -396,9 +400,11 @@ export async function confirmarSugeridas(
 
 // Asigna un aula al slot. Si ese salón queda ocupado a esa hora por otra clase,
 // el recálculo levanta la alerta choque_aula (pero el aula se asigna igual: lo decide coordinación).
-export async function asignarAula(slotId: number, aulaId: number) {
+export async function asignarAula(slotId: number, aulaId: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   const antes = await snapSlotAula(slotId);   // foto del aula previa (para deshacer)
   // aula_manual = true: el motor (asignar.mjs) ya no recalcula ni pisa este salón.
   // Candado de ciclo (misma regla que asignar/editar): solo clases del ciclo activo.
@@ -429,7 +435,7 @@ export async function asignarAula(slotId: number, aulaId: number) {
 }
 
 // Quita el aula del slot (lo deja sin salón). El recálculo limpia el choque y, si es presencial, levanta sin_aula.
-export async function quitarAula(slotId: number) {
+export async function quitarAula(slotId: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
   const [info] = await q<{ materia: string | null; grupo: string | null; aula: string | null }>(
     `select m.nombre materia, g.clave grupo, au.clave aula
@@ -440,7 +446,9 @@ export async function quitarAula(slotId: number) {
       where s.id = $1`, [slotId]);
   const antes = await snapSlotAula(slotId);   // foto del aula previa (para deshacer)
   // Candado de ciclo (misma regla que asignar/editar): solo clases del ciclo activo Y editable.
-  const act = await exigirCicloEditable();
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);
+  if (bloqueo) return { error: bloqueo };
   const upd = await q<{ id: number }>(
     `update slots set aula_id = null, aula_manual = false where id = $1 and ciclo_id=${act.id} returning id`, [slotId]);
   if (!upd.length) return;
@@ -462,7 +470,7 @@ export async function quitarAula(slotId: number) {
 // Quita la asignación del slot (lo deja sin docente).
 // profesorId es opcional: si viene (p. ej. al quitar desde la ficha del docente),
 // también se refresca esa página para que la clase desaparezca de su lista al instante.
-export async function quitarAsignacion(slotId: number, profesorId?: number) {
+export async function quitarAsignacion(slotId: number, profesorId?: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
   const [info] = await q<{ materia: string | null; grupo: string | null; profesor: string | null }>(
     `select m.nombre materia, g.clave grupo, p.nombre profesor
@@ -473,7 +481,9 @@ export async function quitarAsignacion(slotId: number, profesorId?: number) {
        left join profesores p on p.id = a.profesor_id
       where s.id = $1`, [slotId]);
   // Si la clase está compactada, quitar al docente lo libera de TODOS sus grupos (es una sola clase).
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   const [sc] = await q<{ compactacion_id: number | null }>(
     `select compactacion_id from slots where id=$1 and ciclo_id=${act.id}`, [slotId]);
   // Candado de ciclo: si la clase no es del ciclo activo (pantalla vieja apuntando a otro
@@ -508,9 +518,12 @@ export async function quitarAsignacion(slotId: number, profesorId?: number) {
 //  - desliga su historial de mayo (slots quedan sin docente, no se pierden las clases),
 //  - elimina sus alertas. cv_competencias y materia_candidatos caen por cascade.
 // Todo en una transacción: o se hace completo, o no se hace.
-export async function eliminarDocente(profesorId: number) {
+export async function eliminarDocente(profesorId: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  await exigirCicloEditable();   // borrar un docente libera clases y desliga historial: no desde un ciclo cerrado
+  // Borrar un docente libera clases y desliga historial: no desde un ciclo cerrado.
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);
+  if (bloqueo) return { error: bloqueo };
   let nombreBorrado: string | null = null;
   // Foto COMPLETA del docente y sus datos ligados ANTES de borrar (decisión "foto completa":
   // hoy no se deshace un borrado, pero esto prepara la Fase 3 para poder recrearlo tal cual).
@@ -528,11 +541,14 @@ export async function eliminarDocente(profesorId: number) {
     fotoBorrado = { docente: p ?? null, candidaturas, asignaciones, cv, historial_slot_ids: historial.map((h) => h.id) };
     await client.query("delete from asignaciones where profesor_id=$1", [profesorId]);
     await client.query("update slots set docente_id=null where docente_id=$1", [profesorId]);
+    // Sus alertas van primero: alertas.profesor_id es FK SIN cascade y bloquearía el delete
+    // (recomputarAlertas regenera abajo las que apliquen a las clases liberadas).
+    await client.query("delete from alertas where profesor_id=$1", [profesorId]);
     await client.query("delete from profesores where id=$1", [profesorId]); // cascade: cv + candidatos
     // Recalcula alertas dentro de la MISMA transacción: sus clases quedan libres (posible
     // sin_candidato/choque) y desaparece su sobrecarga. Una sola foto coherente del estado final.
     await recomputarAlertas((sql: string, params: unknown[] = []) =>
-      client.query(sql, params).then((r) => r.rows), (await cicloActivo()).id);
+      client.query(sql, params).then((r) => r.rows), act.id);
     await client.query("commit");
   } catch (e) {
     await client.query("rollback");
@@ -948,7 +964,8 @@ export async function editarHorario(slotId: number, _prev: EditarHorarioState, f
   const act = await cicloActivo();
   const bloqueo = motivoCicloSoloLectura(act);   // candado: historial es solo lectura
   if (bloqueo) return { error: bloqueo };
-  const dia = String(fd.get("dia") ?? "").trim() || null;
+  // Mayúsculas: los slots guardan "LUNES" y la detección de choques compara el día como texto.
+  const dia = String(fd.get("dia") ?? "").trim().toUpperCase() || null;
   let hi = limpiarHora(String(fd.get("hora_inicio") ?? ""));
   let hf = limpiarHora(String(fd.get("hora_fin") ?? ""));
   // Las horas van en par: la detección de choques compara inicio–fin como rango.
@@ -1298,9 +1315,11 @@ export async function renombrarMateria(materiaId: number, nombreNuevo: string): 
 // Marca una clase como "No se apertura": se oculta de la lista de trabajo y de los conteos,
 // el motor deja de asignarla y no genera alertas. NO borra nada: es reversible (Reactivar).
 // A diferencia de eliminarSlot, conserva la asignación por si se reactiva más adelante.
-export async function marcarNoApertura(slotId: number) {
+export async function marcarNoApertura(slotId: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   const antes = await snapSlotApertura(slotId);
   const [info] = await q<{ materia: string | null; grupo: string | null }>(
     `select m.nombre materia, g.clave grupo from slots s
@@ -1323,9 +1342,11 @@ export async function marcarNoApertura(slotId: number) {
 }
 
 // Reactiva una clase que estaba como "No se apertura": vuelve a la lista de trabajo y al motor.
-export async function reactivarSlot(slotId: number) {
+export async function reactivarSlot(slotId: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   const antes = await snapSlotApertura(slotId);
   const [info] = await q<{ materia: string | null; grupo: string | null }>(
     `select m.nombre materia, g.clave grupo from slots s
@@ -1348,9 +1369,11 @@ export async function reactivarSlot(slotId: number) {
 }
 
 // Elimina una materia por grupo (ej. "NO SE APERTURA"). Cascada borra su asignación y alertas.
-export async function eliminarSlot(slotId: number) {
+export async function eliminarSlot(slotId: number): Promise<{ error: string } | void> {
   await exigirSesionActiva();
-  const act = await exigirCicloEditable();   // candado: los ciclos de historial son solo lectura
+  const act = await cicloActivo();
+  const bloqueo = motivoCicloSoloLectura(act);   // candado: los ciclos de historial son solo lectura
+  if (bloqueo) return { error: bloqueo };
   // Recordamos a qué materia/grupo apuntaba ANTES de borrar la clase, para limpiar huérfanos.
   const [ref] = await q<{ materia_id: number | null; grupo_id: number | null; materia: string | null; grupo: string | null; plantel: string | null }>(
     `select s.materia_id, s.grupo_id, m.nombre materia, g.clave grupo, s.plantel
@@ -1501,7 +1524,8 @@ export async function crearSlot(_prev: CrearSlotState, fd: FormData): Promise<Cr
   const grupoIdRaw = String(fd.get("grupo_id") ?? "").trim();
   const tipo = String(fd.get("tipo") ?? "").trim() || null;
   const modalidad = String(fd.get("modalidad") ?? "").trim() || null;
-  const dia = String(fd.get("dia") ?? "").trim() || null;
+  // Mayúsculas: los slots guardan "LUNES" y la detección de choques compara el día como texto.
+  const dia = String(fd.get("dia") ?? "").trim().toUpperCase() || null;
   const cuatrimestre = String(fd.get("cuatrimestre") ?? "").trim() || null;
   const hi = limpiarHora(String(fd.get("hora_inicio") ?? ""));
   const hf = limpiarHora(String(fd.get("hora_fin") ?? ""));
@@ -1670,7 +1694,8 @@ export async function compactar(
   const firmas = [...new Set(filas.map((f) => `${f.dia}|${f.hora_inicio}|${f.hora_fin}`))];
   let horarioAplicar: { dia: string; hi: string; hf: string } | null = null;
   if (opts.horario) {
-    const dia = opts.horario.dia?.trim();
+    // Mayúsculas: los slots guardan "LUNES"; un "Lunes" no empataría en la detección de choques.
+    const dia = opts.horario.dia?.trim().toUpperCase();
     const hi = limpiarHora(opts.horario.hora_inicio ?? "");
     const hf = limpiarHora(opts.horario.hora_fin ?? "");
     if (!dia || !hi || !hf)
@@ -1914,8 +1939,13 @@ export async function agregarMateriaAClaseCompactada(
 
 // Marca (o desmarca) un grupo como "reducido": pista MANUAL del coordinador, independiente del
 // número de alumnos (que muchas veces no se captura). No condiciona nada; solo informa en la pantalla.
-export async function marcarChico(grupoId: number, valor: boolean) {
+export async function marcarChico(grupoId: number, valor: boolean): Promise<{ error: string } | void> {
   await exigirSesionActiva();
+  // Candado de ciclo: el dato vive en `grupos` (no por ciclo), así que editarlo desde una
+  // vista de historial afectaría al cuatrimestre en planeación sin que se vea. Se bloquea
+  // igual que el resto de la edición: para cambiarlo, cambia al ciclo en planeación.
+  const bloqueo = motivoCicloSoloLectura(await cicloActivo());
+  if (bloqueo) return { error: bloqueo };
   const [g] = await q<{ clave: string; es_chico: boolean }>("select clave, es_chico from grupos where id=$1", [grupoId]);
   if (!g) return;
   if (g.es_chico === valor) return;   // sin cambio real
@@ -1939,6 +1969,9 @@ export async function editarAlumnosGrupo(
   grupoId: number, valor: number | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   await exigirSesionActiva();
+  // Candado de ciclo: igual que marcarChico, el dato es del grupo y afecta a todos los ciclos.
+  const bloqueo = motivoCicloSoloLectura(await cicloActivo());
+  if (bloqueo) return { ok: false, error: bloqueo };
   const nuevo: number | null = valor;
   if (nuevo != null) {
     if (!Number.isFinite(nuevo) || !Number.isInteger(nuevo) || nuevo < 0)
@@ -2145,7 +2178,8 @@ export async function homogeneizarHorarioCompactacion(
     [compactacionId]);
   if (!c) return { ok: false, error: "Esa compactación ya no existe (quizá se separó)." };
 
-  const dia = horario.dia?.trim();
+  // Mayúsculas: los slots guardan "LUNES"; un "Lunes" no empataría en la detección de choques.
+  const dia = horario.dia?.trim().toUpperCase();
   const hi = limpiarHora(horario.hora_inicio ?? "");
   const hf = limpiarHora(horario.hora_fin ?? "");
   if (!dia || !hi || !hf) return { ok: false, error: "El horario elegido no es válido (día y hora inicio–fin en formato HH:MM)." };

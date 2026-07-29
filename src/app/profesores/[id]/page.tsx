@@ -4,15 +4,20 @@ import { getProfesor } from "@/lib/queries";
 import { cicloActivo } from "@/lib/ciclo";
 import { Estado, PropuestaEstado, TipoClase, plantelCorto, cicloLabel } from "@/lib/ui";
 import { quitarAsignacion, eliminarDocente, confirmar } from "@/app/actions";
-import { ConfirmButton } from "@/lib/confirm-button";
+import { FormAccion } from "@/lib/form-accion";
 import { ExportButtons } from "@/lib/export-buttons";
 import { MateriasAsignables, type GrupoAbierto } from "./materias-asignables";
 import { PropuestaAcciones } from "./propuesta-acciones";
 
 export default async function ProfesorPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [data, act] = await Promise.all([getProfesor(Number(id)), cicloActivo()]);
+  const pid = Number(id);
+  if (!Number.isInteger(pid)) notFound();   // /profesores/abc → 404, no pantalla de error
+  const [data, act] = await Promise.all([getProfesor(pid), cicloActivo()]);
   if (!data) notFound();
+  // Mismo candado visual que /asignacion: en un ciclo de historial no se ofrecen acciones
+  // que el servidor va a rechazar. Antes los botones se mostraban y el error salía redactado.
+  const soloLectura = act.estado !== "planeacion";
   const { prof, candidatas, asignaciones, historial, gruposAbiertos } = data;
 
   // Grupos abiertos (sin docente) agrupados por materia, para poder asignarlo desde su ficha.
@@ -241,23 +246,21 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
                     <td className="py-1.5"><Estado e={a.estado} /></td>
                     <td className="py-1.5 text-right whitespace-nowrap">
                       <div className="flex justify-end gap-2">
-                        {a.estado === "sugerida" && (
-                          <form action={confirmar.bind(null, a.slot_id, prof.id)}>
-                            <ConfirmButton
-                              message={`¿Aprobar la propuesta de ${prof.nombre} en "${a.materia}"${a.grupo ? ` · ${a.grupo}` : ""}? La clase quedará aprobada.`}
-                              className="text-green-700 hover:underline text-xs font-medium">
-                              Aprobar
-                            </ConfirmButton>
-                          </form>
+                        {a.estado === "sugerida" && !soloLectura && (
+                          <FormAccion action={confirmar.bind(null, a.slot_id, prof.id)}
+                            confirm={`¿Aprobar la propuesta de ${prof.nombre} en "${a.materia}"${a.grupo ? ` · ${a.grupo}` : ""}? La clase quedará aprobada.`}
+                            className="text-green-700 hover:underline text-xs font-medium">
+                            Aprobar
+                          </FormAccion>
                         )}
                         <Link href={`/asignacion/${a.slot_id}`} className="text-blue-700 hover:underline text-xs">Ver</Link>
-                        <form action={quitarAsignacion.bind(null, a.slot_id, prof.id)}>
-                          <ConfirmButton
-                            message={`¿Quitar a ${prof.nombre} de "${a.materia}"? La clase quedará sin docente (libre para reasignar).`}
+                        {!soloLectura && (
+                          <FormAccion action={quitarAsignacion.bind(null, a.slot_id, prof.id)}
+                            confirm={`¿Quitar a ${prof.nombre} de "${a.materia}"? La clase quedará sin docente (libre para reasignar).`}
                             className="text-red-600 hover:underline text-xs">
                             Quitar
-                          </ConfirmButton>
-                        </form>
+                          </FormAccion>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -306,10 +309,11 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       <MateriasAsignables
         impartio={impartio} cvFuerte={cvFuerte} afinidad={afinidad}
         profesorId={prof.id} nombre={prof.nombre} disponibles={disponibles}
+        soloLectura={soloLectura}
       />
 
       {/* Borrar docente: acción destructiva, separada y con aviso de lo que implica. */}
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+      {!soloLectura && <div className="rounded-lg border border-red-200 bg-red-50 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-medium text-red-800">Borrar este docente</h2>
@@ -322,15 +326,13 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
               {" "}No se puede deshacer.
             </p>
           </div>
-          <form action={eliminarDocente.bind(null, prof.id)}>
-            <ConfirmButton
-              message={`¿Borrar definitivamente a ${prof.nombre}? Se elimina del sistema junto con su CV y las materias que podía dar.${asignaciones.length > 0 ? ` Sus ${asignaciones.length} clase(s) de ${act.nombre} quedarán sin maestro.` : ""} Esto NO se puede deshacer.`}
-              className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">
-              Borrar docente
-            </ConfirmButton>
-          </form>
+          <FormAccion action={eliminarDocente.bind(null, prof.id)}
+            confirm={`¿Borrar definitivamente a ${prof.nombre}? Se elimina del sistema junto con su CV y las materias que podía dar.${asignaciones.length > 0 ? ` Sus ${asignaciones.length} clase(s) de ${act.nombre} quedarán sin maestro.` : ""} Esto NO se puede deshacer.`}
+            className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">
+            Borrar docente
+          </FormAccion>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

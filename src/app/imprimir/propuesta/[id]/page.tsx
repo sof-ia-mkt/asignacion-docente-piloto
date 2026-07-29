@@ -11,7 +11,9 @@ import { PrintToolbar } from "../../[tipo]/print-toolbar";
 
 export default async function PropuestaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await getPropuestaProfesor(Number(id));
+  const pid = Number(id);
+  if (!Number.isInteger(pid)) notFound();   // id no numérico → 404, no pantalla de error
+  const data = await getPropuestaProfesor(pid);
   if (!data) notFound();
   const { prof, clases, horasPorModulo, totales, ciclo } = data;
 

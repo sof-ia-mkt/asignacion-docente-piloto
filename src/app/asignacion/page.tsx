@@ -3,7 +3,7 @@ import { getSlotsSeptiembre, getPlanteles, contarSugeridas, getFacetasSlots, get
 import { cicloActivo } from "@/lib/ciclo";
 import { plantelCorto } from "@/lib/ui";
 import { confirmarSugeridas } from "@/app/actions";
-import { ConfirmButton } from "@/lib/confirm-button";
+import { FormAccion } from "@/lib/form-accion";
 import { ExportButtons } from "@/lib/export-buttons";
 import { AsignacionFiltros } from "./filtros";
 import { TablaAsignacion } from "./tabla-asignacion";
@@ -87,18 +87,16 @@ export default async function AsignacionPage({
           <ExportButtons tipo="asignacion" params={{ estado, q: qstr, plantel, cuatri,
             tipo, plan, turno, modalidad, comp }} />
           {act.estado === "planeacion" && sugeridas > 0 && (
-            <form action={confirmarSugeridas.bind(null, {
+            <FormAccion action={confirmarSugeridas.bind(null, {
               plantel: plantel || undefined, cuatri: cuatri || undefined,
               tipo: tipo.length ? tipo : undefined, q: qstr || undefined,
               plan: plan.length ? plan : undefined, turno: turno.length ? turno : undefined,
               modalidad: modalidad.length ? modalidad : undefined, comp: comp || undefined,
-            })}>
-              <ConfirmButton
-                message={`¿Aprobar las ${sugeridas} propuestas que estás viendo (${ambito})? Quedarán como "Aprobada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
-                className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm whitespace-nowrap hover:bg-green-700">
-                Aceptar {sugeridas} sugerida{sugeridas === 1 ? "" : "s"}
-              </ConfirmButton>
-            </form>
+            })}
+              confirm={`¿Aprobar las ${sugeridas} propuestas que estás viendo (${ambito})? Quedarán como "Aprobada" (revisadas por coordinación). Podrás cambiar cualquiera después.`}
+              className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm whitespace-nowrap hover:bg-green-700">
+              Aceptar {sugeridas} sugerida{sugeridas === 1 ? "" : "s"}
+            </FormAccion>
           )}
           {act.estado === "planeacion" && (
             <>

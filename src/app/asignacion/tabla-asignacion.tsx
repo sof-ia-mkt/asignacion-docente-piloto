@@ -7,8 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Estado, Fuerza, planCorto, plantelCorto } from "@/lib/ui";
 import { marcarNoApertura, reactivarSlot } from "@/app/actions";
-import { ConfirmButton } from "@/lib/confirm-button";
-import { BotonSubmit } from "@/lib/boton-submit";
+import { FormAccion } from "@/lib/form-accion";
 import { CeldaMateria, CeldaTipo, CeldaPlantel, CeldaGrupo, CeldaIdExcel } from "./celdas-editables";
 
 export type SlotFila = {
@@ -123,20 +122,17 @@ export function TablaAsignacion({
                     Abrir
                   </Link>
                   {soloLectura ? null : parked ? (
-                    <form action={reactivarSlot.bind(null, s.id)}>
-                      <BotonSubmit className="inline-block px-2.5 py-1 rounded-md border border-green-300 bg-green-50 text-xs text-green-700 hover:bg-green-100 whitespace-nowrap">
-                        Reactivar
-                      </BotonSubmit>
-                    </form>
+                    <FormAccion action={reactivarSlot.bind(null, s.id)}
+                      className="inline-block px-2.5 py-1 rounded-md border border-green-300 bg-green-50 text-xs text-green-700 hover:bg-green-100 whitespace-nowrap">
+                      Reactivar
+                    </FormAccion>
                   ) : (
-                    <form action={marcarNoApertura.bind(null, s.id)}>
-                      <ConfirmButton
-                        message={`¿Marcar "${s.materia ?? "esta clase"}"${s.grupo ? ` · ${s.grupo}` : ""} como que NO se apertura?\n\nSe oculta de la lista y deja de contar. No se borra: puedes recuperarla en la pestaña "No se abren".`}
-                        className="inline-block px-2.5 py-1 rounded-md border border-slate-300 text-xs text-slate-500 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300 whitespace-nowrap"
-                      >
-                        No abre
-                      </ConfirmButton>
-                    </form>
+                    <FormAccion action={marcarNoApertura.bind(null, s.id)}
+                      confirm={`¿Marcar "${s.materia ?? "esta clase"}"${s.grupo ? ` · ${s.grupo}` : ""} como que NO se apertura?\n\nSe oculta de la lista y deja de contar. No se borra: puedes recuperarla en la pestaña "No se abren".`}
+                      className="inline-block px-2.5 py-1 rounded-md border border-slate-300 text-xs text-slate-500 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300 whitespace-nowrap"
+                    >
+                      No abre
+                    </FormAccion>
                   )}
                 </div>
               </td>

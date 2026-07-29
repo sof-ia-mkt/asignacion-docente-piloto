@@ -20,10 +20,10 @@ const horario = (g: GrupoAbierto) =>
   g.dia ? `${g.dia} ${g.hora_inicio ?? "—"}–${g.hora_fin ?? "—"}` : "Sin horario";
 
 export function MateriasAsignables({
-  impartio, cvFuerte, afinidad, profesorId, disponibles,
+  impartio, cvFuerte, afinidad, profesorId, disponibles, soloLectura = false,
 }: {
   impartio: MateriaReco[]; cvFuerte: MateriaReco[]; afinidad: MateriaReco[];
-  profesorId: number; nombre: string; disponibles: number;
+  profesorId: number; nombre: string; disponibles: number; soloLectura?: boolean;
 }) {
   // materia_id actualmente desplegada (sus grupos abiertos visibles abajo). null = ninguna.
   const [abierta, setAbierta] = useState<number | null>(null);
@@ -90,7 +90,7 @@ export function MateriasAsignables({
         {/* Empalme = regla dura del servidor, sin excepciones. Antes aquí había un botón
             "Asignar de todos modos" que prometía lo que asignar() siempre rechaza: el
             usuario confirmaba y recibía la pantalla de error. Ahora se muestra el bloqueo. */}
-        {g.choque ? (
+        {soloLectura ? null : g.choque ? (
           <span className="shrink-0 px-3 py-1.5 text-xs text-red-700"
             title={`Ocupado: ya da "${g.choque}" a esta misma hora. No se puede empalmar.`}>
             ocupado

@@ -4,8 +4,6 @@ import { getSlot, buscarProfesores } from "@/lib/queries";
 import { cicloActivo } from "@/lib/ciclo";
 import { Estado, TipoClase, planCorto, plantelCorto, PlantelBadge, esAsincronica } from "@/lib/ui";
 import { asignar, confirmar, quitarAsignacion, asignarAula, quitarAula, eliminarSlot, marcarNoApertura, reactivarSlot } from "@/app/actions";
-import { ConfirmButton } from "@/lib/confirm-button";
-import { BotonSubmit } from "@/lib/boton-submit";
 import { FormAccion } from "@/lib/form-accion";
 import { FormHorario } from "./form-horario";
 
@@ -21,6 +19,7 @@ export default async function SlotPage({
   const { id } = await params;
   const buscar = (await searchParams).buscar ?? "";
   const slotId = Number(id);
+  if (!Number.isInteger(slotId)) notFound();   // /asignacion/abc → 404, no pantalla de error
   const [data, act] = await Promise.all([getSlot(slotId), cicloActivo()]);
   if (!data) notFound();
   const { slot, candidatos, aulas } = data;
@@ -79,11 +78,10 @@ export default async function SlotPage({
             Está oculta de la lista de asignación y no cuenta en los totales ni en las alertas.
           </p>
           {!soloLectura && (
-            <form action={reactivarSlot.bind(null, slotId)}>
-              <BotonSubmit className="px-3 py-1.5 rounded-md border border-green-300 bg-green-100 text-green-800 text-sm whitespace-nowrap hover:bg-green-200">
-                Reactivar
-              </BotonSubmit>
-            </form>
+            <FormAccion action={reactivarSlot.bind(null, slotId)}
+              className="px-3 py-1.5 rounded-md border border-green-300 bg-green-100 text-green-800 text-sm whitespace-nowrap hover:bg-green-200">
+              Reactivar
+            </FormAccion>
           )}
         </div>
       )}
@@ -155,17 +153,14 @@ export default async function SlotPage({
           {slot.docente && !soloLectura && (
             <div className="mt-3 flex gap-2">
               {slot.estado === "sugerida" && (
-                <form action={confirmar.bind(null, slotId, undefined)}>
-                  <BotonSubmit className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm" pendingText="Aceptando…">Aceptar sugerencia</BotonSubmit>
-                </form>
+                <FormAccion action={confirmar.bind(null, slotId, undefined)}
+                  className="px-3 py-1.5 rounded-md bg-green-600 text-white text-sm" pendingText="Aceptando…">Aceptar sugerencia</FormAccion>
               )}
-              <form action={quitarAsignacion.bind(null, slotId, slot.docente_id ?? undefined)}>
-                <ConfirmButton
-                  message="¿Quitar el docente de esta clase? Quedará sin maestro (libre para reasignar)."
-                  className="px-3 py-1.5 rounded-md border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">
-                  Quitar docente
-                </ConfirmButton>
-              </form>
+              <FormAccion action={quitarAsignacion.bind(null, slotId, slot.docente_id ?? undefined)}
+                confirm="¿Quitar el docente de esta clase? Quedará sin maestro (libre para reasignar)."
+                className="px-3 py-1.5 rounded-md border border-slate-200 text-slate-700 text-sm hover:bg-slate-50">
+                Quitar docente
+              </FormAccion>
             </div>
           )}
         </div>
@@ -232,13 +227,11 @@ export default async function SlotPage({
                         {soloLectura ? (
                           slot.aula_id === au.id ? <span className="text-xs text-slate-400">asignada</span> : null
                         ) : slot.aula_id === au.id ? (
-                          <form action={quitarAula.bind(null, slotId)}>
-                            <BotonSubmit className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-xs hover:bg-slate-50">Quitar</BotonSubmit>
-                          </form>
+                          <FormAccion action={quitarAula.bind(null, slotId)}
+                            className="px-2.5 py-1 rounded-md border border-slate-200 text-slate-700 text-xs hover:bg-slate-50">Quitar</FormAccion>
                         ) : (
-                          <form action={asignarAula.bind(null, slotId, au.id)}>
-                            <BotonSubmit className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs">Asignar</BotonSubmit>
-                          </form>
+                          <FormAccion action={asignarAula.bind(null, slotId, au.id)}
+                            className="px-2.5 py-1 rounded-md bg-slate-900 text-white text-xs">Asignar</FormAccion>
                         )}
                       </td>
                     </tr>
@@ -392,13 +385,11 @@ export default async function SlotPage({
                 pero <span className="font-medium">no se borra</span>: puedes recuperarla en la pestaña “No se abren”.
               </p>
             </div>
-            <form action={marcarNoApertura.bind(null, slotId)}>
-              <ConfirmButton
-                message={`¿Marcar "${slot.materia ?? "esta clase"}"${slot.grupo ? ` · ${slot.grupo}` : ""} como que NO se apertura?\n\nSe oculta de la lista y deja de contar. No se borra: puedes recuperarla en la pestaña "No se abren".`}
-                className="px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm whitespace-nowrap hover:bg-amber-700">
-                No se apertura
-              </ConfirmButton>
-            </form>
+            <FormAccion action={marcarNoApertura.bind(null, slotId)}
+              confirm={`¿Marcar "${slot.materia ?? "esta clase"}"${slot.grupo ? ` · ${slot.grupo}` : ""} como que NO se apertura?\n\nSe oculta de la lista y deja de contar. No se borra: puedes recuperarla en la pestaña "No se abren".`}
+              className="px-3 py-1.5 rounded-md bg-amber-600 text-white text-sm whitespace-nowrap hover:bg-amber-700">
+              No se apertura
+            </FormAccion>
           </div>
         </div>
       )}
@@ -412,13 +403,11 @@ export default async function SlotPage({
               {" "}Si solo no se va a abrir, mejor usa “No se apertura” (arriba), que es reversible.
             </p>
           </div>
-          <form action={eliminarSlot.bind(null, slotId)}>
-            <ConfirmButton
-              message="¿Eliminar esta clase del cuatrimestre? Se borra junto con su asignación y alertas. No se puede deshacer."
-              className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">
-              Eliminar
-            </ConfirmButton>
-          </form>
+          <FormAccion action={eliminarSlot.bind(null, slotId)}
+            confirm="¿Eliminar esta clase del cuatrimestre? Se borra junto con su asignación y alertas. No se puede deshacer."
+            className="px-3 py-1.5 rounded-md bg-red-600 text-white text-sm whitespace-nowrap">
+            Eliminar
+          </FormAccion>
         </div>
       </div>}
     </div>

@@ -1,6 +1,8 @@
 -- Asignación Docente — Piloto CENYCA (CASA BLANCA)
 -- Esquema inicial. Postgres / Supabase.
 -- RLS desactivado en piloto: el acceso es solo coordinación (se endurece en fase 2).
+-- NOTA: ese endurecimiento ya ocurrió — ver 0021_cerrar_data_api.sql (RLS deny-all + permisos
+-- de anon/authenticated revocados). La app no se afecta: conecta como postgres (bypassrls).
 
 -- ---------- Catálogos ----------
 create table if not exists planes (

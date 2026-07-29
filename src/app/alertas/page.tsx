@@ -2,11 +2,14 @@ import Link from "next/link";
 import { getAlertas, getAlertasResumen, getPlanteles } from "@/lib/queries";
 import { tipoLabel, plantelCorto, ALERTA_INFO } from "@/lib/ui";
 import { recalcularAlertasManual } from "@/app/actions";
+import { BotonSubmit } from "@/lib/boton-submit";
 import { ExportButtons } from "@/lib/export-buttons";
 import { TablaAlertas } from "./tabla";
 
 // Orden de las tarjetas: lo accionable primero, "Sin aula" al final.
-const TIPOS_ORDEN = ["sin_candidato", "choque_horario", "traslado_plantel", "sobrecarga", "docente_repetido", "sin_aula"];
+// choque_aula va incluido: existe en ALERTA_INFO y se enlaza desde el inicio, así que sin
+// tarjeta no había forma de filtrarlo y el "N en total" no cuadraba con la suma de tarjetas.
+const TIPOS_ORDEN = ["sin_candidato", "choque_horario", "traslado_plantel", "sobrecarga", "docente_repetido", "choque_aula", "sin_aula"];
 
 const SEVERIDADES = [
   { v: "alta", label: "Alta" },
@@ -59,17 +62,20 @@ export default async function AlertasPage({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <ExportButtons tipo="alertas" params={{ tipo, severidad: sevParam, plantel }} />
-          {/* Las alertas se recalculan solas tras cada edición; este botón es por si quieres forzar el refresco. */}
+          {/* Las alertas se recalculan solas tras cada edición; este botón es por si quieres forzar el refresco.
+              Con BotonSubmit se deshabilita mientras corre: el recálculo es pesado y antes nada
+              impedía apretarlo varias veces seguidas. */}
           <form action={recalcularAlertasManual}>
-            <button className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">
+            <BotonSubmit className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50"
+              pendingText="Recalculando…">
               Recalcular alertas
-            </button>
+            </BotonSubmit>
           </form>
         </div>
       </div>
 
       {/* Tarjetas por tipo: clic = ver todas las de ese tipo */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
         {TIPOS_ORDEN.map((t) => {
           const n = conteo.get(t) ?? 0;
           const activo = tipo === t;

@@ -39,14 +39,11 @@ export const motivoCicloSoloLectura = (c: Ciclo): string | null =>
     ? null
     : `El ciclo "${c.nombre}" es historial (solo lectura). Cambia al cuatrimestre en planeación (selector de arriba) para hacer cambios.`;
 
-// Candado de estado de ciclo para las acciones mutantes: devuelve el ciclo activo
-// solo si está en planeación; si es historial, lanza con un mensaje claro.
-export async function exigirCicloEditable(): Promise<Ciclo> {
-  const act = await cicloActivo();
-  const motivo = motivoCicloSoloLectura(act);
-  if (motivo) throw new Error(motivo);
-  return act;
-}
+// OJO: aquí vivía `exigirCicloEditable()`, que LANZABA cuando el ciclo era historial.
+// Se retiró a propósito: un throw desde una server action se redacta en producción, así que
+// el coordinador veía la pantalla de error genérica en vez de "este ciclo es solo lectura".
+// El candado correcto es `motivoCicloSoloLectura` + `return { error: bloqueo }`, que es lo que
+// usan TODAS las acciones mutantes. No reintroduzcas la versión que lanza.
 
 // IDs de los ciclos que cuentan como HISTORIAL (cerrados) para la recomendación.
 // Independiente de cuál esté seleccionado: el historial es el mismo se mire lo que se mire.

@@ -6,7 +6,9 @@ import { esReversible } from "@/lib/revertir";
 import { BotonDeshacer } from "./boton-deshacer";
 
 // Orden de las entidades en las pastillas de filtro (lo más editado primero).
-const ENTIDADES = ["docente", "clase", "aula", "asignacion", "candidatura", "materia", "grupo", "cv"];
+// "compactacion" la registran compactar/separar/unificar: sin su pastilla esos movimientos
+// solo se veían en "Todas" y no había forma de filtrarlos.
+const ENTIDADES = ["docente", "clase", "aula", "asignacion", "candidatura", "materia", "grupo", "compactacion", "cv"];
 const ACCIONES = ["creó", "editó", "borró", "asignó", "quitó", "confirmó", "agregó", "procesó", "deshizo"];
 
 const PER_PAGE = 100;

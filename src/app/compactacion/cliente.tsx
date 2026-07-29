@@ -168,7 +168,10 @@ export function CompactacionCliente({
 
   const ejecutarChico = (grupoId: number, valor: boolean) => {
     start(async () => {
-      await marcarChico(grupoId, valor);
+      // Antes se ignoraba el resultado: si la acción fallaba, el botón "no hacía nada" y el
+      // coordinador no se enteraba. Ahora el rechazo (p. ej. ciclo de historial) se muestra.
+      const r = await marcarChico(grupoId, valor);
+      if (r?.error) { setError(r.error); return; }
       router.refresh();
     });
   };
@@ -237,6 +240,12 @@ export function CompactacionCliente({
           puedes <b>Separar</b> cuando quieras.
         </p>
       </div>
+
+      {/* Errores de acciones que NO pasan por la barra flotante (marcar reducido): la barra solo
+          existe con grupos seleccionados, así que sin esto el mensaje quedaba invisible. */}
+      {error && sel.size === 0 && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <Card title="Clases ya compactadas" value={compactaciones.length} hint="activas en este ciclo" />
@@ -369,7 +378,7 @@ export function CompactacionCliente({
                       </span>
                     )}
                   </button>
-                  {nListos >= 2 && (
+                  {nListos >= 2 && !soloLectura && (
                     <button
                       type="button"
                       onClick={seleccionarTodosListos}
@@ -385,16 +394,18 @@ export function CompactacionCliente({
                       <div key={cl.horario} className="border-b border-slate-100">
                         <div className="flex items-center gap-2 px-3 pt-2">
                           <span className="text-[11px] font-medium text-emerald-700">Mismo horario ({cl.horario}) — listos para compactar</span>
-                          <button
-                            type="button"
-                            onClick={() => seleccionarCluster(cl.grupos)}
-                            className="text-[11px] px-2 py-0.5 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50">
-                            Seleccionar estos {cl.grupos.length}
-                          </button>
+                          {!soloLectura && (
+                            <button
+                              type="button"
+                              onClick={() => seleccionarCluster(cl.grupos)}
+                              className="text-[11px] px-2 py-0.5 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50">
+                              Seleccionar estos {cl.grupos.length}
+                            </button>
+                          )}
                         </div>
                         <div className="divide-y divide-emerald-100/70">
                           {cl.grupos.map((g) => (
-                            <Fila key={g.slot_id} g={g} resaltar checked={sel.has(g.slot_id)} onToggle={() => toggle(g.slot_id)} onChico={ejecutarChico} pending={pending} />
+                            <Fila key={g.slot_id} g={g} resaltar checked={sel.has(g.slot_id)} onToggle={() => toggle(g.slot_id)} onChico={ejecutarChico} pending={pending} soloLectura={soloLectura} />
                           ))}
                         </div>
                       </div>
@@ -406,7 +417,7 @@ export function CompactacionCliente({
                           <div className="px-3 pt-2 text-[11px] font-medium text-slate-400">Otros grupos (horario distinto)</div>
                         )}
                         {sueltos.map((g) => (
-                          <Fila key={g.slot_id} g={g} checked={sel.has(g.slot_id)} onToggle={() => toggle(g.slot_id)} onChico={ejecutarChico} pending={pending} />
+                          <Fila key={g.slot_id} g={g} checked={sel.has(g.slot_id)} onToggle={() => toggle(g.slot_id)} onChico={ejecutarChico} pending={pending} soloLectura={soloLectura} />
                         ))}
                       </div>
                     )}
@@ -666,6 +677,9 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
           · {c.aula ? <span className="text-slate-600">aula {c.aula}</span> : <span className="text-slate-400">sin aula</span>}
         </span>
         <span className="ml-auto text-xs text-slate-400">{c.grupos.length} grupos</span>
+        {/* En un ciclo de historial no se ofrece NINGUNA acción: el servidor las rechaza todas
+            y antes el rechazo llegaba como error inline tardío (o nada, en marcar reducido). */}
+        {!soloLectura && (
         <div className="flex items-center gap-1.5">
           <button type="button" onClick={() => { setEditando((v) => !v); setAgregando(false); setOtraMateria(false); setRazonDraft(c.razon ?? ""); }}
             disabled={pending}
@@ -679,18 +693,17 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
               {agregando ? "Cerrar" : `Agregar grupos (${libres.length})`}
             </button>
           )}
-          {!soloLectura && (
-            <button type="button" onClick={() => { setOtraMateria((v) => !v); setEditando(false); setAgregando(false); setError(null); }}
-              disabled={pending}
-              className="px-2 py-1 rounded-md border border-violet-300 bg-white text-xs text-violet-800 hover:bg-violet-50 disabled:opacity-60">
-              {otraMateria ? "Cerrar" : "Otra materia"}
-            </button>
-          )}
+          <button type="button" onClick={() => { setOtraMateria((v) => !v); setEditando(false); setAgregando(false); setError(null); }}
+            disabled={pending}
+            className="px-2 py-1 rounded-md border border-violet-300 bg-white text-xs text-violet-800 hover:bg-violet-50 disabled:opacity-60">
+            {otraMateria ? "Cerrar" : "Otra materia"}
+          </button>
           <button type="button" onClick={ejecutarSeparar} disabled={pending}
             className="px-2 py-1 rounded-md border border-slate-300 bg-white text-xs text-slate-700 hover:bg-slate-100 disabled:opacity-60">
             Separar
           </button>
         </div>
+        )}
       </div>
 
       <div className="px-3 py-2 space-y-1.5">
@@ -698,7 +711,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
           {c.grupos.map((g) => (
             <span key={g.slot_id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] bg-white border border-emerald-200 text-slate-600">
               <span className="font-mono">{g.grupo}</span>
-              <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} />
+              <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} soloLectura={soloLectura} />
             </span>
           ))}
         </div>
@@ -771,7 +784,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
             {!c.docenteUniforme && "Tienen distinto docente (ajústalo en Asignación). "}
             Para que sea de verdad una sola clase debe compartir horario.
           </div>
-          {!c.horarioUniforme && !unificando && (
+          {!c.horarioUniforme && !unificando && !soloLectura && (
             <button type="button" onClick={() => { setUnificando(true); setError(null); setHorarioSel(firmasMiembros[0] ?? ""); }}
               disabled={pending}
               className="text-[11px] px-2 py-0.5 rounded border border-amber-300 text-amber-800 hover:bg-amber-50 disabled:opacity-60">
@@ -846,7 +859,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
                 <span className="font-mono text-xs text-slate-700">{g.grupo}</span>
                 <span className="text-slate-400">·</span>
                 <span className="text-slate-600 whitespace-nowrap">{horarioTxt(g)}</span>
-                <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} />
+                <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} soloLectura={soloLectura} />
                 {g.es_chico && <span className="px-1.5 py-0.5 rounded-full text-[11px] bg-amber-100 text-amber-800 border border-amber-200">reducido</span>}
                 <span className="ml-auto text-xs">
                   {g.profesor ? <span className="text-slate-500">{g.profesor}</span> : <span className="text-amber-700">sin docente</span>}
@@ -868,17 +881,27 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
 }
 
 // Fila de un grupo candidato: checkbox de selección, horario, alumnos, docente, marca "reducido".
-function Fila({ g, resaltar = false, checked, onToggle, onChico, pending }: {
+// Con `soloLectura` (ciclo de historial) queda informativa: sin checkbox, sin marcar reducido y
+// sin editor de alumnos, porque el servidor rechaza esas tres cosas.
+function Fila({ g, resaltar = false, checked, onToggle, onChico, pending, soloLectura = false }: {
   g: CompactGrupo; resaltar?: boolean; checked: boolean;
   onToggle: () => void; onChico: (grupoId: number, valor: boolean) => void; pending: boolean;
+  soloLectura?: boolean;
 }) {
   return (
     <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-sm ${resaltar ? "bg-emerald-50/60" : ""} ${checked ? "ring-1 ring-inset ring-slate-300" : ""}`}>
-      <input type="checkbox" checked={checked} onChange={onToggle} className="mr-1" aria-label={`Seleccionar ${g.grupo}`} />
+      {!soloLectura && (
+        <input type="checkbox" checked={checked} onChange={onToggle} className="mr-1" aria-label={`Seleccionar ${g.grupo}`} />
+      )}
       <span className="font-mono text-xs text-slate-700">{g.grupo}</span>
       <span className="text-slate-400">·</span>
       <span className="text-slate-600 whitespace-nowrap">{horarioTxt(g)}</span>
-      <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} />
+      <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} soloLectura={soloLectura} />
+      {soloLectura ? (
+        g.es_chico && (
+          <span className="ml-1 px-1.5 py-0.5 rounded-full text-[11px] border bg-amber-100 text-amber-800 border-amber-200">✓ reducido</span>
+        )
+      ) : (
       <button
         type="button"
         onClick={() => onChico(g.grupo_id, !g.es_chico)}
@@ -887,6 +910,7 @@ function Fila({ g, resaltar = false, checked, onToggle, onChico, pending }: {
         className={`ml-1 px-1.5 py-0.5 rounded-full text-[11px] border disabled:opacity-60 ${g.es_chico ? "bg-amber-100 text-amber-800 border-amber-200" : "bg-white text-slate-400 border-slate-200 hover:bg-slate-50"}`}>
         {g.es_chico ? "✓ reducido" : "marcar reducido"}
       </button>
+      )}
       <span className="ml-auto text-xs">
         {g.profesor ? <span className="text-slate-500">{g.profesor}</span> : <span className="text-amber-700">sin docente</span>}
       </span>
@@ -897,7 +921,7 @@ function Fila({ g, resaltar = false, checked, onToggle, onChico, pending }: {
 // Editor inline del número de alumnos de un grupo. El dato vive en `grupos.alumnos`, así que
 // el cambio se refleja en todas las pantallas que lo usan (aula, alertas, motor). Click en la
 // pastilla → input; Enter/✓ guarda, Esc/✕ cancela. Reversible: siempre se puede volver a editar.
-function EditorAlumnos({ grupoId, alumnos }: { grupoId: number; alumnos: number | null }) {
+function EditorAlumnos({ grupoId, alumnos, soloLectura = false }: { grupoId: number; alumnos: number | null; soloLectura?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [editando, setEditando] = useState(false);
@@ -920,6 +944,15 @@ function EditorAlumnos({ grupoId, alumnos }: { grupoId: number; alumnos: number 
       router.refresh();
     });
   };
+
+  // Ciclo de historial: solo el dato, sin botón (el candado del servidor lo rechazaría).
+  if (soloLectura) {
+    return alumnos != null ? (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[11px] border bg-slate-100 text-slate-600 border-slate-200">
+        {alumnos} alum
+      </span>
+    ) : null;
+  }
 
   if (!editando) {
     return (
