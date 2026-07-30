@@ -9,7 +9,7 @@ export default async function NuevoDocentePage() {
     <div className="space-y-4">
       <Link href="/profesores" className="text-sm text-blue-700 hover:underline">← Profesores</Link>
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Nuevo docente</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Nuevo docente</h1>
         <p className="text-sm text-slate-500">
           Captura sus datos y define qué materias puede dar. Aparecerá como candidato en esas materias.
         </p>

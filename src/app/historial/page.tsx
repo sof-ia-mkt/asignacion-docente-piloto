@@ -69,7 +69,7 @@ export default async function HistorialPage({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Historial de modificaciones</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Historial de modificaciones</h1>
           <p className="text-sm text-slate-500">
             Quién cambió qué y cuándo. {total} movimiento(s){entidad ? ` · ${entidadLabel(entidad)}` : ""}
             {accion ? ` · ${accion}` : ""}
@@ -126,8 +126,8 @@ export default async function HistorialPage({
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600">
+        <table className="w-full text-sm tabular-nums">
+          <thead className="bg-slate-50 border-b border-slate-300 text-[11px] uppercase tracking-wider text-slate-500">
             <tr className="text-left">
               <th className="px-3 py-2 font-medium whitespace-nowrap">Fecha y hora</th>
               <th className="px-3 py-2 font-medium">Quién</th>

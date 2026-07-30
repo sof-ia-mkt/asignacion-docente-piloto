@@ -26,7 +26,7 @@ export default async function UsuariosPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Usuarios</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Usuarios</h1>
         <p className="text-sm text-slate-500 mt-1">
           Padrón de acceso a la plataforma. Solo los administradores pueden crear usuarios,
           resetear contraseñas, activar/desactivar o marcar admin.
@@ -35,9 +35,9 @@ export default async function UsuariosPage() {
 
       <Panel>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm tabular-nums">
             <thead>
-              <tr className="text-left text-slate-500 border-b border-slate-200">
+              <tr className="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <th className="py-2 pr-3 font-medium">Nombre</th>
                 <th className="py-2 pr-3 font-medium">Usuario</th>
                 <th className="py-2 pr-3 font-medium">Correo</th>

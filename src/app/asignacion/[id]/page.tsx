@@ -126,7 +126,7 @@ export default async function SlotPage({
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-slate-900">{slot.materia ?? "—"}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{slot.materia ?? "—"}</h1>
             <p className="mt-0.5 text-sm text-slate-600">
               {planCorto(slot.plan)}{slot.cuatrimestre ? ` · ${slot.cuatrimestre} cuatrimestre` : ""}
             </p>
@@ -202,8 +202,8 @@ export default async function SlotPage({
             {aulas.length === 0 ? (
               <p className="text-sm text-slate-400">No hay aulas con cupo para este grupo.</p>
             ) : (
-              <table className="w-full text-sm">
-                <thead className="text-slate-500 text-left">
+              <table className="w-full text-sm tabular-nums">
+                <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500 text-left">
                   <tr>
                     <th className="py-1 font-medium">Aula</th>
                     <th className="py-1 font-medium">Tipo</th>
@@ -250,8 +250,8 @@ export default async function SlotPage({
             No hay candidatos fuertes para esta materia (ni historial ni CV con confianza alta).
           </p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="text-slate-500 text-left">
+          <table className="w-full text-sm tabular-nums">
+            <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500 text-left">
               <tr>
                 <th className="py-1 font-medium">Docente</th>
                 <th className="py-1 font-medium">Plantel</th>
@@ -324,8 +324,8 @@ export default async function SlotPage({
               {buscar ? `Sin docentes que coincidan con "${buscar}".` : "No hay docentes registrados."}
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="text-slate-500 text-left">
+            <table className="w-full text-sm tabular-nums">
+              <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500 text-left">
                 <tr>
                   <th className="py-1 font-medium">Docente</th>
                   <th className="py-1 font-medium">Área</th>

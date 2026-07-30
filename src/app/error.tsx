@@ -18,7 +18,7 @@ export default function Error({ error, unstable_retry }: { error: Error & { dige
   return (
     <div className="mx-auto max-w-lg py-16 text-center">
       <p className="text-sm font-medium text-slate-400">Algo salió mal</p>
-      <h1 className="mt-2 text-xl font-semibold text-slate-900">
+      <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
         No se pudo cargar esta pantalla
       </h1>
       <p className="mt-3 text-sm text-slate-600">

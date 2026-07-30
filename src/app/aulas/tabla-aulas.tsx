@@ -49,8 +49,8 @@ export function TablaAulas({ titulo, lista }: { titulo: string; lista: AulaFila[
         <p className="text-sm text-slate-400">Sin aulas.</p>
       ) : (
         <>
-          <table className="w-full text-sm">
-            <thead className="text-slate-500 text-left">
+          <table className="w-full text-sm tabular-nums">
+            <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500 text-left">
               <tr>
                 <th className="py-1 font-medium">Aula</th>
                 <th className="py-1 font-medium">Tipo</th>

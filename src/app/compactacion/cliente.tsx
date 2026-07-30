@@ -233,7 +233,7 @@ export function CompactacionCliente({
   return (
     <div className="space-y-4 pb-28">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Compactación de grupos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Compactación de grupos</h1>
         <p className="text-sm text-slate-500">
           Junta en <b>una sola clase</b> (un docente, un aula, un horario) la misma materia que se abre en
           varios grupos del mismo plantel. Marca los grupos y pulsa <b>Compactar</b>. Todo es reversible:
@@ -258,7 +258,7 @@ export function CompactacionCliente({
       <div className="rounded-lg border border-blue-200 bg-blue-50/50 px-4 py-3 text-sm text-blue-900">
         <b>¿Qué es esto?</b> Cuando un grupo reducido lleva la misma materia que otra carrera, en vez de abrir
         dos clases casi vacías (dos docentes, dos aulas) se juntan en una sola. Los grupos en{" "}
-        <span className="text-emerald-700 font-medium">verde</span> ya están a la misma hora: se compactan sin
+        <span className="text-green-700 font-medium">verde</span> ya están a la misma hora: se compactan sin
         mover nada. Si están en horarios distintos, eliges a qué hora queda la clase. Puedes <b>capturar el
         número de alumnos</b> de cada grupo en su pastilla (sirve para el aforo del aula y las alertas);
         usa <b>“grupo reducido”</b> para marcarlos tú.
@@ -373,7 +373,7 @@ export function CompactacionCliente({
                       </span>
                     )}
                     {c.listos.length > 0 && (
-                      <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
                         {c.listos.length} horario{c.listos.length === 1 ? "" : "s"} ya coincide{c.listos.length === 1 ? "" : "n"}
                       </span>
                     )}
@@ -382,7 +382,7 @@ export function CompactacionCliente({
                     <button
                       type="button"
                       onClick={seleccionarTodosListos}
-                      className="ml-auto shrink-0 text-[11px] px-2 py-0.5 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50">
+                      className="ml-auto shrink-0 text-[11px] px-2 py-0.5 rounded border border-green-300 text-green-800 hover:bg-green-50">
                       Seleccionar {nListos} listos
                     </button>
                   )}
@@ -393,17 +393,17 @@ export function CompactacionCliente({
                     {c.listos.map((cl) => (
                       <div key={cl.horario} className="border-b border-slate-100">
                         <div className="flex items-center gap-2 px-3 pt-2">
-                          <span className="text-[11px] font-medium text-emerald-700">Mismo horario ({cl.horario}) — listos para compactar</span>
+                          <span className="text-[11px] font-medium text-green-700">Mismo horario ({cl.horario}) — listos para compactar</span>
                           {!soloLectura && (
                             <button
                               type="button"
                               onClick={() => seleccionarCluster(cl.grupos)}
-                              className="text-[11px] px-2 py-0.5 rounded border border-emerald-300 text-emerald-800 hover:bg-emerald-50">
+                              className="text-[11px] px-2 py-0.5 rounded border border-green-300 text-green-800 hover:bg-green-50">
                               Seleccionar estos {cl.grupos.length}
                             </button>
                           )}
                         </div>
-                        <div className="divide-y divide-emerald-100/70">
+                        <div className="divide-y divide-green-100/70">
                           {cl.grupos.map((g) => (
                             <Fila key={g.slot_id} g={g} resaltar checked={sel.has(g.slot_id)} onToggle={() => toggle(g.slot_id)} onChico={ejecutarChico} pending={pending} soloLectura={soloLectura} />
                           ))}
@@ -540,7 +540,7 @@ export function CompactacionCliente({
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={limpiar} className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancelar</button>
                   <button type="button" onClick={ejecutarCompactar} disabled={pending}
-                    className="ml-auto px-4 py-1.5 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-60">
+                    className="ml-auto px-4 py-1.5 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-60">
                     {pending ? "Compactando…" : `Compactar ${sel.size} grupos en una clase`}
                   </button>
                 </div>
@@ -660,8 +660,8 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
   };
 
   return (
-    <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 overflow-hidden">
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-emerald-100">
+    <div className="rounded-lg border border-green-200 bg-green-50/40 overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-green-100">
         <span className="font-medium text-slate-800">{c.materia ?? "—"}</span>
         {c.tipo && (
           <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-medium border ${c.tipo === "DISCIPLINAR" ? "bg-slate-100 text-slate-600 border-slate-200" : "bg-indigo-100 text-indigo-800 border-indigo-200"}`}>
@@ -689,7 +689,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
           {libres.length > 0 && (
             <button type="button" onClick={() => { setAgregando((v) => !v); setEditando(false); setOtraMateria(false); setSelAgg(new Set()); setError(null); }}
               disabled={pending}
-              className="px-2 py-1 rounded-md border border-emerald-300 bg-white text-xs text-emerald-800 hover:bg-emerald-50 disabled:opacity-60">
+              className="px-2 py-1 rounded-md border border-green-300 bg-white text-xs text-green-800 hover:bg-green-50 disabled:opacity-60">
               {agregando ? "Cerrar" : `Agregar grupos (${libres.length})`}
             </button>
           )}
@@ -709,7 +709,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
       <div className="px-3 py-2 space-y-1.5">
         <div className="flex flex-wrap gap-1.5">
           {c.grupos.map((g) => (
-            <span key={g.slot_id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] bg-white border border-emerald-200 text-slate-600">
+            <span key={g.slot_id} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] bg-white border border-green-200 text-slate-600">
               <span className="font-mono">{g.grupo}</span>
               <EditorAlumnos grupoId={g.grupo_id} alumnos={g.alumnos} soloLectura={soloLectura} />
             </span>
@@ -818,7 +818,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setUnificando(false)} className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancelar</button>
                 <button type="button" onClick={ejecutarUnificar} disabled={pending}
-                  className="ml-auto px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-60">
+                  className="ml-auto px-3 py-1.5 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-60">
                   {pending ? "Aplicando…" : "Aplicar a todos"}
                 </button>
               </div>
@@ -847,7 +847,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
 
       {/* Agregar grupos sueltos a esta clase */}
       {agregando && (
-        <div className="px-3 pb-3 space-y-2 border-t border-emerald-100 pt-2">
+        <div className="px-3 pb-3 space-y-2 border-t border-green-100 pt-2">
           <div className="text-[11px] text-slate-500">
             Estos grupos de la misma materia siguen sueltos. Al agregarlos adoptan el horario de la clase
             ({horarioTxt(c)}){c.docenteUniforme && c.profesor ? ` y su docente (${c.profesor})` : ""}.
@@ -870,7 +870,7 @@ function TarjetaCompactada({ c, libres, materias, soloLectura = false }: { c: Co
           <div className="flex items-center gap-2">
             <button type="button" onClick={() => { setAgregando(false); setSelAgg(new Set()); }} className="px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-700 hover:bg-slate-50">Cancelar</button>
             <button type="button" onClick={ejecutarAgregar} disabled={pending || selAgg.size === 0}
-              className="ml-auto px-3 py-1.5 rounded-md bg-emerald-600 text-white text-sm hover:bg-emerald-700 disabled:opacity-60">
+              className="ml-auto px-3 py-1.5 rounded-md bg-green-600 text-white text-sm hover:bg-green-700 disabled:opacity-60">
               {pending ? "Agregando…" : `Agregar ${selAgg.size || ""} a la clase`}
             </button>
           </div>
@@ -889,7 +889,7 @@ function Fila({ g, resaltar = false, checked, onToggle, onChico, pending, soloLe
   soloLectura?: boolean;
 }) {
   return (
-    <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-sm ${resaltar ? "bg-emerald-50/60" : ""} ${checked ? "ring-1 ring-inset ring-slate-300" : ""}`}>
+    <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-sm ${resaltar ? "bg-green-50/60" : ""} ${checked ? "ring-1 ring-inset ring-slate-300" : ""}`}>
       {!soloLectura && (
         <input type="checkbox" checked={checked} onChange={onToggle} className="mr-1" aria-label={`Seleccionar ${g.grupo}`} />
       )}
@@ -982,7 +982,7 @@ function EditorAlumnos({ grupoId, alumnos, soloLectura = false }: { grupoId: num
         placeholder="alum"
         className="w-16 border border-slate-300 rounded px-1 py-0.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-slate-400" />
       <button type="button" onClick={guardar} disabled={pending}
-        title="Guardar" className="px-1 py-0.5 rounded text-[11px] bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60">
+        title="Guardar" className="px-1 py-0.5 rounded text-[11px] bg-green-600 text-white hover:bg-green-700 disabled:opacity-60">
         {pending ? "…" : "✓"}
       </button>
       <button type="button" onClick={cerrar} disabled={pending}

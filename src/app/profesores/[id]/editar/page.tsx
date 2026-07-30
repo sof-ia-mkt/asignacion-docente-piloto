@@ -24,7 +24,7 @@ export default async function EditarDocentePage({ params }: { params: Promise<{ 
       <Link href={`/profesores/${profId}`} className="text-sm text-blue-700 hover:underline">← Volver a la ficha</Link>
 
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Editar docente</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Editar docente</h1>
         <p className="text-sm text-slate-500">Corrige sus datos y administra qué materias puede dar.</p>
       </div>
 

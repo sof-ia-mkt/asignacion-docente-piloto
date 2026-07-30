@@ -2,7 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { Geist } from "next/font/google";
 import "./globals.css";
+
+// globals.css referencia --font-geist-sans desde el scaffold original, pero la variable nunca
+// se definió: la app corría con la fuente del sistema por accidente. next/font la sirve
+// self-hosted (sin peticiones externas) y con métricas de fallback anti-layout-shift.
+const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 import { getCiclos, cicloActivo } from "@/lib/ciclo";
 import { CicloSelector } from "./ciclo-selector";
 import { sesionActual } from "@/lib/session";
@@ -44,7 +50,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       redirect("/login");
     }
     return (
-      <html lang="es" className="h-full antialiased">
+      <html lang="es" className={`h-full antialiased ${geist.variable}`}>
         <body className="min-h-full bg-slate-50">{children}</body>
       </html>
     );
@@ -61,7 +67,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const accesoTotal = tieneAccesoTotal(usuario);
   const navItems = accesoTotal ? [...nav, { href: "/usuarios", label: "Usuarios" }] : nav;
   return (
-    <html lang="es" className="h-full antialiased">
+    <html lang="es" className={`h-full antialiased ${geist.variable}`}>
       <body className="min-h-full flex flex-col">
         <header className="bg-slate-900 text-white">
           <div className="mx-auto max-w-[1440px] px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">

@@ -50,7 +50,7 @@ export function Fuerza({ puntaje, razon }: { puntaje: number | null; razon?: str
   if (puntaje == null) return null;
   const nivel = puntaje >= 60 ? "alta" : puntaje >= 40 ? "media" : "baja";
   const cls = nivel === "alta"
-    ? "bg-emerald-100 text-emerald-800 border-emerald-200"
+    ? "bg-green-100 text-green-800 border-green-200"
     : nivel === "media"
       ? "bg-amber-100 text-amber-800 border-amber-200"
       : "bg-slate-100 text-slate-600 border-slate-200";
@@ -111,7 +111,7 @@ export const entidadLabel = (e: string) => ENTIDAD_LABEL[e] ?? e;
 const ENTIDAD_COLOR: Record<string, string> = {
   docente: "bg-blue-100 text-blue-800 border-blue-200",
   clase: "bg-violet-100 text-violet-800 border-violet-200",
-  aula: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  aula: "bg-green-100 text-green-800 border-green-200",
   asignacion: "bg-amber-100 text-amber-800 border-amber-200",
   candidatura: "bg-sky-100 text-sky-800 border-sky-200",
   materia: "bg-teal-100 text-teal-800 border-teal-200",
@@ -217,7 +217,7 @@ export function plantelCorto(nombre: string | null): string {
 const CLASE_COLOR: Record<string, string> = {
   DISCIPLINAR: "bg-violet-100 text-violet-800 border-violet-200",
   VIRTUAL: "bg-sky-100 text-sky-800 border-sky-200",
-  "MÓDULO 1": "bg-emerald-100 text-emerald-800 border-emerald-200",
+  "MÓDULO 1": "bg-green-100 text-green-800 border-green-200",
   "MÓDULO 2": "bg-amber-100 text-amber-800 border-amber-200",
   "MÓDULO 3": "bg-rose-100 text-rose-800 border-rose-200",
 };

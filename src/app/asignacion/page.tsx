@@ -78,7 +78,7 @@ export default async function AsignacionPage({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">Asignación · {act.nombre}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Asignación · {act.nombre}</h1>
           <p className="text-sm text-slate-500">
             {total} materias por grupo{plantel ? ` en ${plantelCorto(plantel)}` : " (todos los planteles)"}. Sin propuesta aparecen primero.
           </p>

@@ -144,7 +144,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
       {/* Encabezado: identidad y formación, compacto */}
       <div className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex items-start justify-between gap-4">
-          <h1 className="text-xl font-semibold text-slate-900">{prof.nombre}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{prof.nombre}</h1>
           <div className="flex items-center gap-3 shrink-0 mt-1">
             <span className="text-xs text-slate-400">
               {prof.anios_experiencia != null ? `${prof.anios_experiencia} años de experiencia` : "Experiencia s/d"}
@@ -216,8 +216,8 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
           <p className="text-sm text-slate-400">Todavía no tiene clases asignadas para {act.nombre}.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-slate-500 text-left">
+            <table className="w-full text-sm tabular-nums">
+              <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500 text-left">
                 <tr>
                   <th className="py-1 font-medium">ID</th>
                   <th className="py-1 font-medium">Materia</th>
@@ -278,8 +278,8 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
           <p className="text-sm text-slate-400">No hay registro de clases que haya dado en ciclos anteriores.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-slate-500 text-left">
+            <table className="w-full text-sm tabular-nums">
+              <thead className="bg-slate-50 border-b border-slate-200 text-[11px] uppercase tracking-wider text-slate-500 text-left">
                 <tr>
                   <th className="py-1 font-medium">Materia</th>
                   <th className="py-1 font-medium">Tipo</th>

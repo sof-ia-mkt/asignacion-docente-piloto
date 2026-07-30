@@ -9,7 +9,7 @@ export default async function DashboardsLayout({ children }: { children: React.R
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold text-slate-900">Dashboards</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">Dashboards</h1>
         <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-3 py-1">
           Viendo: <b className="text-slate-700">{act.nombre}</b>
         </span>

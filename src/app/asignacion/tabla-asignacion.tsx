@@ -54,8 +54,8 @@ export function TablaAsignacion({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-      <table className="min-w-full text-sm [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
-        <thead className="bg-slate-50 text-slate-600">
+      <table className="min-w-full text-sm tabular-nums [&_th]:whitespace-nowrap [&_td]:whitespace-nowrap">
+        <thead className="bg-slate-50 border-b border-slate-300 text-[11px] uppercase tracking-wider text-slate-500">
           <tr className="text-left">
             <th className="px-4 py-2 font-medium">ID</th>
             <th className="px-4 py-2 font-medium hidden md:table-cell">Plantel</th>
