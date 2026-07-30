@@ -79,10 +79,11 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
   const nClasesUnicas = vistas.size;
   const horasSemana = Math.round((minutos / 60) * 10) / 10;
   const ciclo = asignaciones.find((a) => a.ciclo)?.ciclo ?? null;
+  // Sin marca "(tentativa)": mismo criterio que la Propuesta en PDF (decisión de coordinación
+  // 2026-07-29) — al docente no se le comunica nada como tentativo.
   const lineasMaterias = asignaciones.map((a) => {
     const horario = a.dia ? (a.hora_inicio && a.hora_fin ? `${a.dia} ${a.hora_inicio}-${a.hora_fin}` : a.dia) : "En línea (sin hora fija)";
-    const tentativa = a.estado !== "confirmada" ? " (tentativa)" : "";
-    return `- ${a.materia}${a.tipo ? ` (${a.tipo})` : ""} · ${a.grupo ?? "s/grupo"} · ${plantelCorto(a.plantel)} · ${horario}${tentativa}`;
+    return `- ${a.materia}${a.tipo ? ` (${a.tipo})` : ""} · ${a.grupo ?? "s/grupo"} · ${plantelCorto(a.plantel)} · ${horario}`;
   });
   const asuntoCorreo = `Propuesta Académica — ${cicloLabel(ciclo)} · CENYCA`;
   const cuerpoCorreo = [

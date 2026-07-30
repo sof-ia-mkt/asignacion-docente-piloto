@@ -1,8 +1,18 @@
 import { q } from "./db";
 import { cicloActivo, ciclosHistorial, sqlEnHistorial } from "./ciclo";
+import type { FechasTipos } from "./fechas-tipo";
 
 // "Docentes" del Excel que no son personas (no asignables).
 export const PLACEHOLDERS = ["CAMBIO DE TURNO", "DOCENTE NUEVO", "NO SE APERTURA", "NOSE APERTURA"];
+
+// Fechas de impartición por tipo de clase del ciclo ACTIVO (ciclos.fechas_tipos, migración
+// 0022). Null si el ciclo no las tiene capturadas: los documentos simplemente no las muestran.
+export async function getFechasTipos(): Promise<FechasTipos | null> {
+  const act = await cicloActivo();
+  const [row] = await q<{ fechas_tipos: FechasTipos | null }>(
+    `select fechas_tipos from ciclos where id = ${act.id}`);
+  return row?.fechas_tipos ?? null;
+}
 
 // Predicado SQL para el choque de horario: MÓDULO 1/2/3 son periodos SECUENCIALES del cuatrimestre
 // (módulo 1 = primeras semanas, módulo 2 = las siguientes, etc.), así que dos clases en módulos
@@ -113,10 +123,10 @@ export async function getProfesor(id: number) {
       where mc.profesor_id = $1 order by mc.puntaje desc, m.nombre`, [id]);
   const asignaciones = await q<{
     slot_id: number; id_excel: number | null; materia: string; grupo: string | null; plantel: string | null; dia: string | null;
-    hora_inicio: string | null; hora_fin: string | null; tipo: string | null; estado: string; ciclo: string | null;
-    compactacion_id: number | null;
+    hora_inicio: string | null; hora_fin: string | null; tipo: string | null; cuatrimestre: string | null; estado: string;
+    ciclo: string | null; compactacion_id: number | null;
   }>(
-    `select s.id slot_id, s.id_excel, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, a.estado, s.ciclo, s.compactacion_id
+    `select s.id slot_id, s.id_excel, m.nombre materia, g.clave grupo, s.plantel, s.dia, s.hora_inicio, s.hora_fin, s.tipo, s.cuatrimestre, a.estado, s.ciclo, s.compactacion_id
        from asignaciones a join slots s on s.id = a.slot_id
        join materias m on m.id = s.materia_id left join grupos g on g.id = s.grupo_id
       where a.profesor_id = $1 and a.profesor_id is not null and not s.no_apertura order by s.plantel, s.dia, s.hora_inicio`, [id]);
@@ -240,9 +250,10 @@ export async function getPropuestaProfesor(id: number) {
       horasSemana: Math.round((minutos / 60) * 10) / 10,
       conHorario,
       sinHorario: nUnidades - conHorario,
-      tentativas: clases.filter((c) => c.estado !== "confirmada").length,
     },
     ciclo,
+    // Fechas por tipo del ciclo activo: la columna "Fechas" del documento (07 sep – 08 oct).
+    fechasTipos: await getFechasTipos(),
   };
 }
 

@@ -20,11 +20,18 @@ body {
 /* Impresión / "Guardar como PDF": quita el cromo de la app y deja solo el contenido.
    Aplica a cualquier pantalla, pero sobre todo a /imprimir/<tipo> (vista limpia). */
 @media print {
-  /* Oculta encabezado, pie y todo lo marcado como no imprimible (filtros, botones). */
-  header,
-  footer,
+  /* Oculta el cromo de la APP (nav superior y pie del layout, hijos directos de body) y todo
+     lo marcado como no imprimible (filtros, botones). OJO: solo `body >` — un `header` a secas
+     borraba también el membrete y las firmas de la Propuesta Académica, que son <header>/<footer>
+     DENTRO del documento. El PDF salía sin logo, sin título y sin líneas de firma. */
+  body > header,
+  body > footer,
   .no-print {
     display: none !important;
+  }
+  /* Márgenes de hoja más aprovechados que el default del navegador (~2.5cm). */
+  @page {
+    margin: 14mm 12mm;
   }
   body {
     background: #fff !important;

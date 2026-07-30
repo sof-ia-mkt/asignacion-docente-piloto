@@ -16,8 +16,10 @@ import {
   getDashRiesgos,
   getDashRecomendacion,
   getBitacora,
+  getFechasTipos,
 } from "./queries";
 import { plantelCorto, planCorto, tipoLabel, entidadLabel } from "./ui";
+import { rangoDeTipo } from "./fechas-tipo";
 
 export type ReportTable = { name: string; headers: string[]; rows: (string | number | null)[][] };
 export type Report = { filename: string; title: string; subtitle?: string; tables: ReportTable[] };
@@ -140,6 +142,8 @@ async function reporteProfesor(p: URLSearchParams): Promise<Report> {
   const data = id ? await getProfesor(id) : null;
   if (!data) return { filename: `docente-${hoy()}`, title: "Docente no encontrado", tables: [] };
   const { prof, candidatas, asignaciones, historial } = data;
+  // Fechas de impartición por tipo (mismo criterio que la Propuesta Académica en PDF).
+  const fechasTipos = await getFechasTipos();
 
   // Materias candidatas: una por materia, con su señal más fuerte (igual que la ficha).
   const porMateria = new Map<number, (typeof candidatas)[number]>();
@@ -169,13 +173,15 @@ async function reporteProfesor(p: URLSearchParams): Promise<Report> {
       },
       {
         name: "Clases septiembre",
-        headers: ["Materia", "Tipo", "Grupo", "Plantel", "Horario", "Estado"],
+        headers: ["Materia", "Tipo", "Cuatrimestre", "Grupo", "Plantel", "Horario", "Fechas", "Estado"],
         rows: asignaciones.map((a) => [
           a.materia,
           a.tipo ?? "",
+          a.cuatrimestre ?? "",
           a.grupo ?? "",
           plantelCorto(a.plantel),
           horario(a.dia, a.hora_inicio, a.hora_fin),
+          rangoDeTipo(a.tipo, fechasTipos) ?? "",
           estadoLabel(a.estado),
         ]),
       },

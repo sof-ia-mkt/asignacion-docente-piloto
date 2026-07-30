@@ -30,7 +30,8 @@ export function PrintToolbar() {
         Volver
       </button>
       <span className="text-xs text-slate-400">
-        En el diálogo elige “Guardar como PDF” como destino para obtener el PDF.
+        En el diálogo elige “Guardar como PDF” como destino. Para que no salgan la fecha y la
+        dirección web en los bordes, desmarca “Encabezados y pies de página” (en Más ajustes).
       </span>
     </div>
   );
