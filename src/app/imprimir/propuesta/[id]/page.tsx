@@ -1,7 +1,9 @@
 // Propuesta Académica (PDF por docente).
 // /imprimir/propuesta/<id>  ->  documento limpio con membrete (logo + CENYCA),
-// la tabla de materias/horarios que el docente impartirá en septiembre y los totales
-// (materias + horas/semana). Coordinación lo descarga ("Guardar como PDF") y lo envía por
+// la tabla de materias/horarios que el docente impartirá en septiembre y el total de
+// materias (SIN total de horas/semana: decisión de coordinación 2026-08-03 — al docente
+// no se le comunica su carga total de horas). Coordinación lo descarga ("Guardar como
+// PDF") y lo envía por
 // correo. La app NO manda correo: solo genera el documento imprimible.
 
 import { notFound } from "next/navigation";
@@ -69,10 +71,6 @@ export default async function PropuestaPage({ params }: { params: Promise<{ id: 
           <div className="text-2xl font-semibold text-slate-900">{totales.materias}</div>
           <div className="text-xs text-slate-500">Materias propuestas</div>
         </div>
-        <div className="rounded-lg border border-slate-300 px-4 py-2">
-          <div className="text-2xl font-semibold text-slate-900">{totales.horasSemana}</div>
-          <div className="text-xs text-slate-500">Horas/semana (clases con horario)</div>
-        </div>
         {totales.sinHorario > 0 && (
           <div className="rounded-lg border border-slate-300 px-4 py-2">
             <div className="text-2xl font-semibold text-slate-900">{totales.sinHorario}</div>
@@ -131,12 +129,6 @@ export default async function PropuestaPage({ params }: { params: Promise<{ id: 
                   </td>
                 </tr>
               ))}
-              <tr>
-                <td className="border border-slate-300 bg-slate-100 px-2 py-1.5 font-semibold text-slate-800">Total</td>
-                <td className="border border-slate-300 bg-slate-100 px-2 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">
-                  {totales.horasSemana} horas/semana
-                </td>
-              </tr>
             </tbody>
           </table>
           {totales.sinHorario > 0 && (

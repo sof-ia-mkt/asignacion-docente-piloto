@@ -55,29 +55,18 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
   const disponibles = todas.filter((c) => !c.yaLaDa).length;
 
   // Correo pregrabado (Gmail): abre una ventana de REDACCIÓN de Gmail en pestaña nueva, con
-  // destinatario, asunto y cuerpo ya escritos (resumen de materias + horas). La app NO envía:
+  // destinatario, asunto y cuerpo ya escritos (resumen de materias, sin total de horas). La app NO envía:
   // el coordinador lo revisa, adjunta el PDF y da "Enviar" desde su propia cuenta de Gmail.
   // El botón se deshabilita si el docente no tiene correo.
-  const aMin = (h: string | null) => {
-    if (!h) return null;
-    const [hh, mm] = h.split(":").map(Number);
-    return Number.isFinite(hh) && Number.isFinite(mm) ? hh * 60 + mm : null;
-  };
   // CANDADO COMPACTACIÓN: una clase compactada (varios grupos, un docente/aula/horario) cuenta
-  // como UNA sola para horas/semana y para el total de materias. Los renglones sí se listan todos.
+  // como UNA sola para el total de materias. Los renglones sí se listan todos.
   const uniKey = (a: { compactacion_id: number | null; slot_id: number }) =>
     a.compactacion_id ? `c${a.compactacion_id}` : `s${a.slot_id}`;
   const vistas = new Set<string>();
-  let minutos = 0;
   for (const a of asignaciones) {
-    const k = uniKey(a);
-    if (vistas.has(k)) continue;
-    vistas.add(k);
-    const i = aMin(a.hora_inicio), f = aMin(a.hora_fin);
-    if (i != null && f != null && f > i) minutos += f - i;
+    vistas.add(uniKey(a));
   }
   const nClasesUnicas = vistas.size;
-  const horasSemana = Math.round((minutos / 60) * 10) / 10;
   const ciclo = asignaciones.find((a) => a.ciclo)?.ciclo ?? null;
   // Sin marca "(tentativa)": mismo criterio que la Propuesta en PDF (decisión de coordinación
   // 2026-07-29) — al docente no se le comunica nada como tentativo.
@@ -93,7 +82,7 @@ export default async function ProfesorPage({ params }: { params: Promise<{ id: s
     "",
     ...lineasMaterias,
     "",
-    `Total: ${nClasesUnicas} materia(s) · ${horasSemana} horas/semana.`,
+    `Total: ${nClasesUnicas} materia(s).`,
     "",
     "Le pedimos confirmar de recibido y su conformidad respondiendo a este correo. Quedamos atentos a cualquier comentario o ajuste.",
     "",
